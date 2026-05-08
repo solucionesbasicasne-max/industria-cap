@@ -1,0 +1,29 @@
+body { font-family: 'Inter', sans-serif; background-color: var(--bg-main, #f8fafc); color: var(--text-main, #1e293b); transition: all 0.3s ease; }
+.sidebar-item.active { background-color: var(--accent-light, #eff6ff); color: var(--accent-main, #2563eb); border-right: 4px solid var(--accent-main, #2563eb); }
+.view-section { display: none; }
+.view-section.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.tab-btn.active { color: var(--accent-main, #2563eb); border-bottom: 2px solid var(--accent-main, #2563eb); font-weight: 800; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.person-item:hover { transform: translateX(5px); }
+
+/* OVERRIDES PARA TEMAS */
+.theme-midnight { --bg-main: #0f172a; --bg-card: #1e293b; --text-main: #f1f5f9; --text-muted: #94a3b8; --accent-main: #38bdf8; --accent-light: #0ea5e920; --border: #334155; }
+.theme-ocean { --bg-main: #f0f4ff; --bg-card: #ffffff; --text-main: #1e3a8a; --text-muted: #60a5fa; --accent-main: #2563eb; --accent-light: #dbeafe; --border: #dbeafe; }
+.theme-emerald { --bg-main: #f0fdf4; --bg-card: #ffffff; --text-main: #064e3b; --text-muted: #34d399; --accent-main: #059669; --accent-light: #d1fae5; --border: #d1fae5; }
+
+/* Aplicación de variables */
+.theme-midnight body, .theme-midnight main { background-color: var(--bg-main) !important; color: var(--text-main) !important; }
+.theme-midnight aside, .theme-midnight .bg-white, .theme-midnight section.bg-white { background-color: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-main) !important; }
+.theme-midnight h1, .theme-midnight h2, .theme-midnight h3, .theme-midnight td, .theme-midnight th { color: var(--text-main) !important; }
+.theme-midnight .text-slate-400, .theme-midnight .text-slate-500 { color: var(--text-muted) !important; }
+.theme-midnight .bg-slate-50, .theme-midnight .bg-slate-100 { background-color: #0f172a !important; }
+
+.theme-emerald .bg-blue-600, .theme-emerald .from-indigo-600 { background: var(--accent-main) !important; }
+.theme-ocean .bg-blue-600 { background: var(--accent-main) !important; }
+
+/* ESTILOS PARA MATRICES */
+.sticky-col { position: sticky; left: 0; background: inherit; z-index: 20; border-right: 2px solid var(--border, #f1f5f9) !important; }
+.sticky-header { position: sticky; top: 0; left: 0; z-index: 30; background: var(--bg-main, #f8fafc); border-right: 2px solid var(--border, #f1f5f9) !important; }
+.scroll-container { overflow-x: auto; overflow-y: auto; max-width: 100%; }

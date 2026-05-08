@@ -1,0 +1,247 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- SEGURIDAD ---
+
+model User {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  password      String
+  email         String?   @unique
+  roleId        String
+  role          Role      @relation(fields: [roleId], references: [id])
+  empleado      Empleado? @relation(fields: [empleadoId], references: [id])
+  empleadoId    String?   @unique
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  logs          AuditLog[]
+}
+
+model Role {
+  id            String       @id @default(uuid())
+  name          String       @unique // SuperAdmin, RH, Supervisor, Instructor, Gerente, Consulta
+  permissions   Permission[]
+  users         User[]
+}
+
+model Permission {
+  id            String    @id @default(uuid())
+  action        String    // e.g., "CREATE_USER", "DELETE_COURSE"
+  resource      String    // e.g., "USER", "COURSE"
+  roles         Role[]
+}
+
+// --- ESTRUCTURA ORGANIZACIONAL ---
+
+model UnidadNegocio {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  isActive      Boolean   @default(true)
+  areas         Area[]
+  createdAt     DateTime  @default(now())
+}
+
+model Area {
+  id              String        @id @default(uuid())
+  name            String
+  unidadNegocioId String
+  unidadNegocio   UnidadNegocio @relation(fields: [unidadNegocioId], references: [id])
+  departamentos   Departamento[]
+  isActive        Boolean       @default(true)
+}
+
+model Departamento {
+  id            String    @id @default(uuid())
+  name          String
+  areaId        String
+  area          Area      @relation(fields: [areaId], references: [id])
+  puestos       Puesto[]
+  isActive      Boolean   @default(true)
+}
+
+model Puesto {
+  id              String    @id @default(uuid())
+  name            String
+  departamentoId  String
+  departamento    Departamento @relation(fields: [departamentoId], references: [id])
+  empleados       Empleado[]
+  matriz          MatrizCapacitacion[]
+  // Campos para IA
+  objetivo        String?   @db.Text
+  funciones       String?   @db.Text
+  competencias    String?   @db.Text
+  riesgos         String?   @db.Text
+  eppRequerido    String?   @db.Text
+  isActive        Boolean   @default(true)
+}
+
+// --- PERSONAL ---
+
+model Empleado {
+  id              String    @id @default(uuid())
+  ficha           String    @unique // Número de empleado (FICHA)
+  nombre          String
+  apPaterno       String
+  apMaterno       String
+  fechaAlta       DateTime  // ALTA
+  unidadId        String?   // UNIDAD
+  categoria       String?   // CATEGORIA (Operativo, Técnico, etc.)
+  areaId          String?   // AREA
+  curp            String?   @unique
+  sexo            String?   // H, M
+  nss             String?   @unique // IMSS
+  rfc             String?   @unique
+  puestoId        String
+  puesto          Puesto    @relation(fields: [puestoId], references: [id])
+  supervisorId    String?
+  supervisor      Empleado? @relation("Subordinados", fields: [supervisorId], references: [id])
+  subordinados    Empleado[] @relation("Subordinados")
+  estatus         String    @default("ACTIVO") // ACTIVO, INACTIVO, BAJA
+  user            User?
+  asistencias     Asistencia[]
+  resultados      ResultadoEvaluacion[]
+  documentos      Documento[]
+  dc3             DC3[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// --- CAPACITACIÓN ---
+
+model CategoriaCapacitacion {
+  id            String    @id @default(uuid())
+  name          String    @unique // Procedimientos, STPS, CAP, Técnica, etc.
+  temas         TemaCapacitacion[]
+}
+
+model TemaCapacitacion {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  categoriaId   String
+  categoria     CategoriaCapacitacion @relation(fields: [categoriaId], references: [id])
+  horas         Float     @default(0)
+  vigenciaMeses Int       @default(0) // 0 = Sin vencimiento
+  esObligatorio Boolean   @default(false)
+  capacitaciones Capacitacion[]
+  matriz        MatrizCapacitacion[]
+}
+
+model MatrizCapacitacion {
+  id                String    @id @default(uuid())
+  puestoId          String
+  temaId            String
+  puesto            Puesto    @relation(fields: [puestoId], references: [id])
+  tema              TemaCapacitacion @relation(fields: [temaId], references: [id])
+  esObligatorio     Boolean   @default(true)
+  frecuenciaMeses   Int       @default(12)
+  
+  @@unique([puestoId, temaId])
+}
+
+model Capacitacion {
+  id            String    @id @default(uuid())
+  temaId        String
+  tema          TemaCapacitacion @relation(fields: [temaId], references: [id])
+  instructor    String
+  tipo          String    @default("INTERNA") // INTERNA, EXTERNA
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  estatus       String    @default("PROGRAMADA") // PROGRAMADA, EN_CURSO, FINALIZADA, CANCELADA
+  sesiones      Sesion[]
+  evaluaciones  Evaluacion[]
+  createdAt     DateTime  @default(now())
+}
+
+model Sesion {
+  id              String       @id @default(uuid())
+  capacitacionId  String
+  capacitacion    Capacitacion @relation(fields: [capacitacionId], references: [id])
+  fecha           DateTime
+  duracionHoras   Float
+  asistencias     Asistencia[]
+}
+
+model Asistencia {
+  id            String    @id @default(uuid())
+  sesionId      String
+  empleadoId    String
+  sesion        Sesion    @relation(fields: [sesionId], references: [id])
+  empleado      Empleado  @relation(fields: [empleadoId], references: [id])
+  asistio       Boolean   @default(false)
+  nota          String?
+}
+
+model Evaluacion {
+  id              String    @id @default(uuid())
+  capacitacionId  String
+  capacitacion    Capacitacion @relation(fields: [capacitacionId], references: [id])
+  nombre          String
+  preguntas       Json      // Almacenado como JSON para flexibilidad
+  resultados      ResultadoEvaluacion[]
+}
+
+model ResultadoEvaluacion {
+  id            String     @id @default(uuid())
+  evaluacionId  String
+  empleadoId    String
+  evaluacion    Evaluacion @relation(fields: [evaluacionId], references: [id])
+  empleado      Empleado   @relation(fields: [empleadoId], references: [id])
+  calificacion  Float
+  observaciones String?
+  fecha         DateTime   @default(now())
+}
+
+model Documento {
+  id            String    @id @default(uuid())
+  empleadoId    String
+  empleado      Empleado  @relation(fields: [empleadoId], references: [id])
+  nombre        String
+  tipo          String    // PDF, IMG, etc.
+  url           String
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now())
+}
+
+model DC3 {
+  id            String    @id @default(uuid())
+  empleadoId    String
+  empleado      Empleado  @relation(fields: [empleadoId], references: [id])
+  cursoNombre   String
+  fechaEmision  DateTime
+  instructor    String
+  archivoUrl    String?
+  createdAt     DateTime  @default(now())
+}
+
+model AuditLog {
+  id            String    @id @default(uuid())
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  action        String
+  resource      String
+  details       String?   @db.Text
+  ipAddress     String?
+  timestamp     DateTime  @default(now())
+}
+
+model Alerta {
+  id            String    @id @default(uuid())
+  tipo          String    // VENCIMIENTO, FALTA_CAPACITACION, etc.
+  mensaje       String
+  leida         Boolean   @default(false)
+  empleadoId    String?
+  createdAt     DateTime  @default(now())
+}
