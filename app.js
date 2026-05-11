@@ -44,10 +44,26 @@ async function save() {
             // Sincronizar TODAS las tablas críticas y capturar errores
             const results = await Promise.allSettled([
                 _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
-                _supabase.from('personal').upsert(appData.personal.map(p => ({
-                    ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
-                    alta: p.alta, unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
-                })), { onConflict: 'ficha' }),
+                _supabase.from('personal').upsert(appData.personal.map(p => {
+                    // Normalizar fecha para Supabase (YYYY-MM-DD)
+                    let fechaSupabase = p.alta;
+                    if (p.alta && p.alta.includes('/')) {
+                        const [d, m, y] = p.alta.split('/');
+                        fechaSupabase = `${y}-${m}-${d}`;
+                    }
+                    
+                    return {
+                        ficha: p.ficha, 
+                        nombre: p.nombre, 
+                        up_paterno: p.apPaterno, // Ajustado a 'up_paterno' por error en DB
+                        ap_materno: p.apMaterno,
+                        alta: fechaSupabase, 
+                        unidad: p.unidad, 
+                        area: p.area, 
+                        depto: p.depto, 
+                        perfil_asignado: p.perfilAsignado
+                    };
+                }), { onConflict: 'ficha' }),
                 _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' }),
                 _supabase.from('catalogo').upsert(appData.catalogo, { onConflict: 'id' }),
                 _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
@@ -94,17 +110,26 @@ async function syncFromCloud() {
 
         const { data: pers } = await _supabase.from('personal').select('*');
         if(pers && pers.length > 0) {
-            appData.personal = pers.map(p => ({
-                ficha: p.ficha,
-                nombre: p.nombre,
-                apPaterno: p.ap_paterno,
-                apMaterno: p.ap_materno,
-                alta: p.alta,
-                unidad: p.unidad,
-                area: p.area,
-                depto: p.depto,
-                perfilAsignado: p.perfil_asignado
-            }));
+            appData.personal = pers.map(p => {
+                // Re-formatear fecha para la App (DD/MM/YYYY) si viene de la nube
+                let fechaApp = p.alta;
+                if (p.alta && p.alta.includes('-')) {
+                    const [y, m, d] = p.alta.split('-');
+                    fechaApp = `${d}/${m}/${y}`;
+                }
+                
+                return {
+                    ficha: p.ficha,
+                    nombre: p.nombre,
+                    apPaterno: p.up_paterno || p.ap_paterno, // Soporta ambos por si corriges el nombre en DB
+                    apMaterno: p.ap_materno,
+                    alta: fechaApp,
+                    unidad: p.unidad,
+                    area: p.area,
+                    depto: p.depto,
+                    perfilAsignado: p.perfil_asignado
+                };
+            });
         }
 
         const { data: users } = await _supabase.from('app_users').select('*');
@@ -2556,7 +2581,9 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
         }
 
         if (!ses) {
-            alert('Credenciales incorrectas');
+            const errorMsg = "Credenciales incorrectas o acceso denegado por Supabase. Verifica las políticas RLS en el panel de Supabase.";
+            console.error(errorMsg);
+            alert(errorMsg);
             return;
         }
 
