@@ -155,11 +155,15 @@ async function save() {
                     id: isValidUUID(d.id) ? d.id : undefined,
                     area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
                     name: d.name
-                })), { onConflict: 'id' })
+                })), { onConflict: 'id' }),
+                _supabase.from('app_users').upsert(appData.users.map(u => ({
+                    id: isValidUUID(u.id) ? u.id : undefined,
+                    nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
+                    unidad: u.unidad, area: u.area, depto: u.depto
+                })), { onConflict: 'username' })
             ]);
-            console.log("Datos enviados a Supabase con éxito.");
-            alert("¡Datos sincronizados en la nube!");
-            console.log("Sincronización con Supabase completada con éxito.");
+            console.log("Sincronización profesional completada.");
+            alert("¡Sincronización en la Nube Exitosa!");
 
             console.log("Datos sincronizados con la nube correctamente.");
         } catch(e) { 
@@ -208,56 +212,57 @@ initApp();
 
 async function syncFromCloud() {
     try {
-        console.log("Iniciando sincronización prioritaria...");
+        console.log("Sincronización profesional iniciada...");
         
-        // 1. PRIORIDAD: Usuarios para mostrar perfil rápido
+        // 1. CARGA RÁPIDA DE SESIÓN (Prioridad absoluta)
         const { data: users } = await _supabase.from('app_users').select('*');
-        if(users && users.length > 0) {
+        if(users) {
             appData.users = users.map(u => ({
-                nombre: u.nombre,
-                user: u.username,
-                pass: u.password,
-                role: u.role,
-                unidad: u.unidad,
-                area: u.area,
-                depto: u.depto
+                id: u.id, nombre: u.nombre, user: u.username, pass: u.password,
+                role: u.role, unidad: u.unidad, area: u.area, depto: u.depto
             }));
-            render(); // Renderizado rápido para mostrar nombre de usuario
+            // Actualizar usuario actual si ya está logueado
+            if(currentUser) {
+                const updated = appData.users.find(u => u.user === currentUser.user);
+                if(updated) currentUser = updated;
+            }
+            render();
         }
 
-        // OCULTAR SPLASH DE INMEDIATO PASE LO QUE PASE
-        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
+        // 2. CARGA EN PARALELO DEL RESTO DE LA APP (Background)
+        const tables = [
+            { name: 'personal', setter: (data) => {
+                appData.personal = data.map(p => {
+                    let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
+                    return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
+                });
+            }},
+            { name: 'catalogo', setter: (data) => {
+                appData.catalogo = data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
+            }},
+            { name: 'unidades', setter: (data) => appData.unidades = data },
+            { name: 'areas', setter: (data) => appData.areas = data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })) },
+            { name: 'departamentos', setter: (data) => appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })) },
+            { name: 'matrices', setter: (data) => appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })) },
+            { name: 'perfiles', setter: (data) => appData.perfiles = data },
+            { name: 'instructores', setter: (data) => appData.instructors = data }
+        ];
 
-        // 2. RESTO DE TABLAS EN SEGUNDO PLANO (No bloquean el inicio)
-        _supabase.from('personal').select('*').then(res => { if(res.data) { 
-            appData.personal = res.data.map(p => {
-                let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
-                return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
+        tables.forEach(t => {
+            _supabase.from(t.name).select('*').then(res => {
+                if(res.data) {
+                    t.setter(res.data);
+                    render();
+                }
             });
-            render(); 
-        }});
-        
-        _supabase.from('catalogo').select('*').then(res => { if(res.data) {
-            appData.catalogo = res.data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
-            render();
-        }});
+        });
 
-        _supabase.from('unidades').select('*').then(res => { if(res.data) { appData.unidades = res.data; render(); }});
-        _supabase.from('areas').select('*').then(res => { if(res.data) { appData.areas = res.data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })); render(); }});
-        _supabase.from('departamentos').select('*').then(res => { if(res.data) { appData.departamentos = res.data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })); render(); }});
-        
-        _supabase.from('matrices').select('*').then(res => { if(res.data) {
-            appData.matrices = res.data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance }));
-            render();
-        }});
+        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
+        console.log("Sincronización en segundo plano activa.");
 
-        _supabase.from('perfiles').select('*').then(res => { if(res.data) { appData.perfiles = res.data; render(); }});
-        _supabase.from('instructores').select('*').then(res => { if(res.data) { appData.instructors = res.data; render(); }});
-
-        render();
-        console.log("Nube sincronizada con éxito.");
     } catch(e) {
-        console.warn("Cloud Sync Offline:", e);
+        console.warn("Modo Offline / Error de Conexión:", e);
+        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
     }
 }
 
