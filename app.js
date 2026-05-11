@@ -45,17 +45,15 @@ async function save() {
             const results = await Promise.allSettled([
                 _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
                 _supabase.from('personal').upsert(appData.personal.map(p => {
-                    // Normalizar fecha para Supabase (YYYY-MM-DD)
                     let fechaSupabase = p.alta;
                     if (p.alta && p.alta.includes('/')) {
                         const [d, m, y] = p.alta.split('/');
                         fechaSupabase = `${y}-${m}-${d}`;
                     }
-                    
                     return {
                         ficha: p.ficha, 
                         nombre: p.nombre, 
-                        up_paterno: p.apPaterno, // Ajustado a 'up_paterno' por error en DB
+                        ap_paterno: p.apPaterno, 
                         ap_materno: p.apMaterno,
                         alta: fechaSupabase, 
                         unidad: p.unidad, 
@@ -64,12 +62,39 @@ async function save() {
                         perfil_asignado: p.perfilAsignado
                     };
                 }), { onConflict: 'ficha' }),
-                _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' }),
-                _supabase.from('catalogo').upsert(appData.catalogo, { onConflict: 'id' }),
+                _supabase.from('matrices').upsert(appData.matrices.map(m => ({
+                    id: m.id,
+                    name: m.name,
+                    depto: m.depto,
+                    category: m.category,
+                    start_date: m.start,
+                    end_date: m.end,
+                    topics: m.topics,
+                    attendance: m.attendance
+                })), { onConflict: 'id' }),
+                _supabase.from('catalogo').upsert(appData.catalogo.map(c => ({
+                    codigo: c.codigo,
+                    nombre: c.nombre,
+                    categoria: c.categoria,
+                    area_aplica: c.areaAplica,
+                    descripcion: c.descripcion,
+                    instructor: c.instructor,
+                    archivo_tipo: c.archivo,
+                    file_name: c.fileName,
+                    file_data: c.fileData
+                })), { onConflict: 'codigo' }),
                 _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
                 _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' }),
-                _supabase.from('areas').upsert(appData.areas, { onConflict: 'id' }),
-                _supabase.from('departamentos').upsert(appData.departamentos, { onConflict: 'id' }),
+                _supabase.from('areas').upsert(appData.areas.map(a => ({
+                    id: a.id,
+                    unit_id: a.unitId,
+                    name: a.name
+                })), { onConflict: 'id' }),
+                _supabase.from('departamentos').upsert(appData.departamentos.map(d => ({
+                    id: d.id,
+                    area_id: d.areaId,
+                    name: d.name
+                })), { onConflict: 'id' }),
                 _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' }),
                 _supabase.from('app_users').upsert(appData.users.map(u => ({
                     nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
@@ -155,10 +180,33 @@ async function syncFromCloud() {
         }
 
         const { data: mats } = await _supabase.from('matrices').select('*');
-        if(mats && mats.length > 0) appData.matrices = mats;
+        if(mats && mats.length > 0) {
+            appData.matrices = mats.map(m => ({
+                id: m.id,
+                name: m.name,
+                depto: m.depto,
+                category: m.category,
+                start: m.start_date,
+                end: m.end_date,
+                topics: m.topics,
+                attendance: m.attendance
+            }));
+        }
 
         const { data: cats } = await _supabase.from('catalogo').select('*');
-        if(cats && cats.length > 0) appData.catalogo = cats;
+        if(cats && cats.length > 0) {
+            appData.catalogo = cats.map(c => ({
+                codigo: c.codigo,
+                nombre: c.nombre,
+                categoria: c.categoria,
+                areaAplica: c.area_aplica,
+                descripcion: c.descripcion,
+                instructor: c.instructor,
+                archivo: c.archivo_tipo,
+                fileName: c.file_name,
+                fileData: c.file_data
+            }));
+        }
 
         const { data: perfs } = await _supabase.from('perfiles').select('*');
         if(perfs && perfs.length > 0) appData.perfiles = perfs;
@@ -167,10 +215,22 @@ async function syncFromCloud() {
         if(units && units.length > 0) appData.unidades = units;
 
         const { data: areas } = await _supabase.from('areas').select('*');
-        if(areas && areas.length > 0) appData.areas = areas;
+        if(areas && areas.length > 0) {
+            appData.areas = areas.map(a => ({
+                id: a.id,
+                unitId: a.unit_id,
+                name: a.name
+            }));
+        }
 
         const { data: depts } = await _supabase.from('departamentos').select('*');
-        if(depts && depts.length > 0) appData.departamentos = depts;
+        if(depts && depts.length > 0) {
+            appData.departamentos = depts.map(d => ({
+                id: d.id,
+                areaId: d.area_id,
+                name: d.name
+            }));
+        }
 
         const { data: inst } = await _supabase.from('instructores').select('*');
         if(inst && inst.length > 0) appData.instructors = inst;
