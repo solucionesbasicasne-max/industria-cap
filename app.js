@@ -1474,7 +1474,8 @@ function deleteCatalogoItem(idx) {
         if(!container) return;
         container.innerHTML = '';
 
-        const yearFilter = document.getElementById('matrix-year-filter').value;
+        const yf = document.getElementById('matrix-year-filter');
+        const yearFilter = yf ? yf.value : new Date().getFullYear().toString();
 
         // Filtrar estructura por permisos de usuario
         const units = appData.unidades.filter(u => currentUser.role === 'ADMIN' || currentUser.unidad === 'ALL' || u.name === currentUser.unidad);
