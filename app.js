@@ -88,92 +88,70 @@ async function save() {
     localStorage.setItem('erp_perf', JSON.stringify(appData.perfiles));
     localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
     localStorage.setItem('erp_mat', JSON.stringify(appData.matrices));
-    localStorage.setItem('erp_unidades', JSON.stringify(appData.unidades));
+    localStorage.setItem('erp_units', JSON.stringify(appData.unidades));
     localStorage.setItem('erp_areas', JSON.stringify(appData.areas));
     localStorage.setItem('erp_deptos', JSON.stringify(appData.departamentos));
-    localStorage.setItem('erp_instructors', JSON.stringify(appData.instructors));
     localStorage.setItem('erp_users', JSON.stringify(appData.users));
+    localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
+    
+    // Persistencia en la Nube
+    saveToCloud();
+}
 
-    // Debounce para Sincronización Nube y Rerenderizado pesado
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
-        try {
-            console.log("Sincronizando cambios con Supabase...");
-            
-            // Sincronizar TODAS las tablas críticas y capturar errores
-            const results = await Promise.allSettled([
-                _supabase.from('personal').upsert(appData.personal.map(p => {
-                    let fechaSupabase = p.alta;
-                    if (p.alta && p.alta.includes('/')) {
-                        const [d, m, y] = p.alta.split('/');
-                        fechaSupabase = `${y}-${m}-${d}`;
-                    }
-                    return {
-                        ficha: p.ficha, 
-                        nombre: p.nombre, 
-                        ap_paterno: p.apPaterno, 
-                        ap_materno: p.apMaterno,
-                        alta: fechaSupabase, 
-                        unidad: p.unidad, 
-                        area: p.area, 
-                        depto: p.depto, 
-                        perfil_asignado: p.perfilAsignado
-                    };
-                }), { onConflict: 'ficha' }),
-                _supabase.from('matrices').upsert(appData.matrices.map(m => ({
-                    id: m.id,
-                    name: m.name,
-                    depto: m.depto,
-                    category: m.category,
-                    start_date: m.start,
-                    end_date: m.end,
-                    topics: m.topics,
-                    attendance: m.attendance
-                })), { onConflict: 'id' }),
-                _supabase.from('catalogo').upsert(appData.catalogo.map(c => ({
-                    id: c.id, 
-                    codigo: c.codigo,
-                    nombre: c.nombre,
-                    categoria: c.categoria,
-                    area_aplica: c.areaAplica,
-                    descripcion: c.descripcion,
-                    instructor: c.instructor,
-                    archivo_tipo: c.archivo,
-                    file_name: c.fileName,
-                    file_data: c.fileData
-                })), { onConflict: 'id' }),
-                _supabase.from('unidades').upsert(appData.unidades.map(u => ({ 
-                    id: isValidUUID(u.id) ? u.id : undefined, 
-                    name: u.name 
-                })), { onConflict: 'id' }),
-                _supabase.from('areas').upsert(appData.areas.map(a => ({
-                    id: isValidUUID(a.id) ? a.id : undefined,
-                    unit_id: isValidUUID(a.unitId) ? a.unitId : undefined,
-                    name: a.name
-                })), { onConflict: 'id' }),
-                _supabase.from('departamentos').upsert(appData.departamentos.map(d => ({
-                    id: isValidUUID(d.id) ? d.id : undefined,
-                    area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
-                    name: d.name
-                })), { onConflict: 'id' }),
-                _supabase.from('app_users').upsert(appData.users.map(u => ({
-                    id: isValidUUID(u.id) ? u.id : undefined,
-                    nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
-                    unidad: u.unidad, area: u.area, depto: u.depto
-                })), { onConflict: 'username' })
-            ]);
-            console.log("Sincronización profesional completada.");
-            alert("¡Sincronización en la Nube Exitosa!");
-
-            console.log("Datos sincronizados con la nube correctamente.");
-        } catch(e) { 
-            console.warn("Aviso: No se pudo subir todo a la nube (posible tabla vacía o RLS), pero se guardó localmente:", e); 
-        }
+async function saveToCloud() {
+    try {
+        console.log("Iniciando persistencia profesional...");
         
-        if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
-            render();
-        }
-    }, 1500);
+        const syncTable = async (tableName, data, onConflict = 'id') => {
+            if (!data || data.length === 0) return;
+            const { error } = await _supabase.from(tableName).upsert(data, { onConflict });
+            if (error) console.error(`Error en ${tableName}:`, error.message);
+            else console.log(`Sincronizado: ${tableName}`);
+        };
+
+        // 1. UNIDADES (Prioridad)
+        await syncTable('unidades', appData.unidades.map(u => ({ 
+            id: isValidUUID(u.id) ? u.id : undefined, 
+            name: u.name 
+        })));
+
+        // 2. ESTRUCTURA
+        await syncTable('areas', appData.areas.map(a => ({
+            id: isValidUUID(a.id) ? a.id : undefined,
+            unit_id: isValidUUID(a.unitId) ? a.unitId : undefined,
+            name: a.name
+        })));
+
+        await syncTable('departamentos', appData.departamentos.map(d => ({
+            id: isValidUUID(d.id) ? d.id : undefined,
+            area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
+            name: d.name
+        })));
+
+        // 3. PERSONAL Y USUARIOS
+        await syncTable('personal', appData.personal.map(p => ({
+            ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
+            alta: p.alta ? p.alta.split('/').reverse().join('-') : null,
+            unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
+        })), 'ficha');
+
+        await syncTable('app_users', appData.users.map(u => ({
+            id: isValidUUID(u.id) ? u.id : undefined,
+            nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
+            unidad: u.unidad, area: u.area, depto: u.depto
+        })), 'username');
+
+        // 4. CONOCIMIENTO
+        await syncTable('catalogo', appData.catalogo.map(c => ({
+            id: isValidUUID(c.id) ? c.id : undefined,
+            codigo: c.codigo, nombre: c.nombre, categoria: c.categoria,
+            area_aplica: c.areaAplica, descripcion: c.descripcion, instructor: c.instructor,
+            archivo_tipo: c.archivo, file_name: c.fileName, file_data: c.fileData
+        })));
+
+    } catch(e) {
+        console.error("Fallo crítico en sincronización:", e);
+    }
 }
 
 // BRANDING LOGIC
