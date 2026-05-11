@@ -205,6 +205,7 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openPersonalModal()" class="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase shadow-xl shadow-slate-200">+ Nuevo Trabajador</button>
+                    <button onclick="cleanEmptyPersonal()" class="bg-amber-50 text-amber-600 border border-amber-200 px-6 py-2.5 rounded-xl font-black text-xs uppercase hover:bg-amber-600 hover:text-white transition-all">Limpiar Vacíos</button>
                     <button onclick="exportDatabase()" class="bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-xl font-black text-xs uppercase shadow-sm">Exportar Base</button>
                     <label class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-black text-xs cursor-pointer shadow-lg shadow-blue-100 uppercase">Importar Excel <input type="file" class="hidden" onchange="importFromExcel(event)"></label>
                 </div>

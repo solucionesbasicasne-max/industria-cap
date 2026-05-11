@@ -709,14 +709,23 @@ function importFromExcel(ev) {
                 depto: get(['depto', 'departamento', 'areaespecifica', 'departamentos']),
                 perfilAsignado: get(['perfil', 'puesto', 'cargo', 'posicion'])
             };
-        });
+        }).filter(p => p.nombre && p.nombre.trim() !== ""); // FILTRO: Solo filas con nombre
         
         save();
-        alert(`¡Éxito! Se han importado ${appData.personal.length} registros correctamente.`);
+        alert(`¡Éxito! Se han importado ${appData.personal.length} registros válidos.`);
         render(); // Refrescar toda la interfaz
     };
     r.readAsArrayBuffer(ev.target.files[0]);
 }
+
+window.cleanEmptyPersonal = () => {
+    const totalOriginal = appData.personal.length;
+    appData.personal = appData.personal.filter(p => p.nombre && p.nombre.trim() !== "");
+    const borrados = totalOriginal - appData.personal.length;
+    save();
+    render();
+    alert(`Se han eliminado ${borrados} filas vacías o incompletas.`);
+};
 
 function switchTab(id, btn) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
