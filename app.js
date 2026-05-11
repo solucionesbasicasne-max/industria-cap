@@ -143,7 +143,7 @@ async function save() {
                     file_data: c.fileData
                 })), { onConflict: 'id' }),
                 _supabase.from('unidades').upsert(appData.unidades.map(u => ({ 
-                    id: isValidUUID(u.id) ? u.id : undefined, // Dejar que Supabase genere el UUID si no es válido
+                    id: isValidUUID(u.id) ? u.id : undefined, 
                     name: u.name 
                 })), { onConflict: 'id' }),
                 _supabase.from('areas').upsert(appData.areas.map(a => ({
@@ -155,12 +155,10 @@ async function save() {
                     id: isValidUUID(d.id) ? d.id : undefined,
                     area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
                     name: d.name
-                })), { onConflict: 'id' }),
-                _supabase.from('app_users').upsert(appData.users.map(u => ({
-                    nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
-                    unidad: u.unidad, area: u.area, depto: u.depto
-                })), { onConflict: 'username' })
+                })), { onConflict: 'id' })
             ]);
+            console.log("Datos enviados a Supabase con éxito.");
+            alert("¡Datos sincronizados en la nube!");
             console.log("Sincronización con Supabase completada con éxito.");
 
             console.log("Datos sincronizados con la nube correctamente.");
@@ -227,80 +225,34 @@ async function syncFromCloud() {
             render(); // Renderizado rápido para mostrar nombre de usuario
         }
 
-        // 2. RESTO DE TABLAS EN PARALELO
-        const [pRes, mRes, cRes, uRes, aRes, dRes] = await Promise.all([
-            _supabase.from('personal').select('*'),
-            _supabase.from('matrices').select('*'),
-            _supabase.from('catalogo').select('*'),
-            _supabase.from('unidades').select('*'),
-            _supabase.from('areas').select('*'),
-            _supabase.from('departamentos').select('*')
-        ]);
+        // OCULTAR SPLASH DE INMEDIATO PASE LO QUE PASE
+        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
 
-        if(pRes.data) {
-            appData.personal = pRes.data.map(p => {
-                let fechaApp = p.alta;
-                if (p.alta && p.alta.includes('-')) {
-                    const [y, m, d] = p.alta.split('-');
-                    fechaApp = `${d}/${m}/${y}`;
-                }
-                return {
-                    ficha: p.ficha,
-                    nombre: p.nombre,
-                    apPaterno: p.ap_paterno,
-                    apMaterno: p.ap_materno,
-                    alta: fechaApp,
-                    unidad: p.unidad,
-                    area: p.area,
-                    depto: p.depto,
-                    perfilAsignado: p.perfil_asignado
-                };
+        // 2. RESTO DE TABLAS EN SEGUNDO PLANO (No bloquean el inicio)
+        _supabase.from('personal').select('*').then(res => { if(res.data) { 
+            appData.personal = res.data.map(p => {
+                let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
+                return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
             });
-        }
-
-        if(mRes.data) {
-            appData.matrices = mRes.data.map(m => ({
-                id: m.id, name: m.name, depto: m.depto, category: m.category,
-                start: m.start_date, end: m.end_date, topics: m.topics, attendance: m.attendance
-            }));
-        }
-
-        if(cRes.data) {
-            console.log("Datos de Catálogo cargados:", cRes.data.length);
-            appData.catalogo = cRes.data.map(c => ({
-                id: c.id, 
-                codigo: c.codigo || '', 
-                nombre: c.nombre || '', 
-                categoria: c.categoria || 'Procedimiento',
-                areaAplica: c.area_aplica || '', 
-                descripcion: c.descripcion || '',
-                instructor: c.instructor || '', 
-                archivo: c.archivo_tipo || '',
-                fileName: c.file_name || '', 
-                fileData: c.file_data || null
-            }));
-            localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
-        }
-
-        if(uRes.data) appData.unidades = uRes.data;
+            render(); 
+        }});
         
-        if(aRes.data) {
-            appData.areas = aRes.data.map(a => ({
-                id: a.id, unitId: a.unit_id, name: a.name
-            }));
-        }
+        _supabase.from('catalogo').select('*').then(res => { if(res.data) {
+            appData.catalogo = res.data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
+            render();
+        }});
 
-        if(dRes.data) {
-            appData.departamentos = dRes.data.map(d => ({
-                id: d.id, areaId: d.area_id, name: d.name
-            }));
-        }
+        _supabase.from('unidades').select('*').then(res => { if(res.data) { appData.unidades = res.data; render(); }});
+        _supabase.from('areas').select('*').then(res => { if(res.data) { appData.areas = res.data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })); render(); }});
+        _supabase.from('departamentos').select('*').then(res => { if(res.data) { appData.departamentos = res.data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })); render(); }});
+        
+        _supabase.from('matrices').select('*').then(res => { if(res.data) {
+            appData.matrices = res.data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance }));
+            render();
+        }});
 
-        const { data: perfs } = await _supabase.from('perfiles').select('*');
-        if(perfs && perfs.length > 0) appData.perfiles = perfs;
-
-        const { data: inst } = await _supabase.from('instructores').select('*');
-        if(inst && inst.length > 0) appData.instructors = inst;
+        _supabase.from('perfiles').select('*').then(res => { if(res.data) { appData.perfiles = res.data; render(); }});
+        _supabase.from('instructores').select('*').then(res => { if(res.data) { appData.instructors = res.data; render(); }});
 
         render();
         console.log("Nube sincronizada con éxito.");
