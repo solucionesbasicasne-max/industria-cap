@@ -1,17 +1,76 @@
 let appData = {
-    organizacion: JSON.parse(localStorage.getItem('erp_org')) || { name: 'Corporativo Industrial S.A.' },
+    organizacion: JSON.parse(localStorage.getItem('erp_branding')) || { 
+        name: 'MINERA PENMONT S. DE RL C.V.',
+        logo: 'https://i.ibb.co/7C9f1f0/media-1778525906934.png'
+    },
     personal: JSON.parse(localStorage.getItem('erp_pers')) || [],
-    unidades: JSON.parse(localStorage.getItem('erp_unidades')) || [{id:1, name:'Planta Monterrey'}],
-    areas: JSON.parse(localStorage.getItem('erp_areas')) || [{id:1, unitId:1, name:'Producción'}],
-    departamentos: JSON.parse(localStorage.getItem('erp_deptos')) || [{id:1, areaId:1, name:'Mantenimiento'}],
-    perfiles: JSON.parse(localStorage.getItem('erp_perf')) || [],
+    matrices: JSON.parse(localStorage.getItem('erp_mats')) || [],
     catalogo: JSON.parse(localStorage.getItem('erp_cat')) || [],
-    matrices: JSON.parse(localStorage.getItem('erp_mat')) || [],
+    perfiles: JSON.parse(localStorage.getItem('erp_perfs')) || [],
+    unidades: JSON.parse(localStorage.getItem('erp_units')) || [],
+    areas: JSON.parse(localStorage.getItem('erp_areas')) || [],
+    departamentos: JSON.parse(localStorage.getItem('erp_depts')) || [],
     instructors: JSON.parse(localStorage.getItem('erp_instructors')) || [],
     users: JSON.parse(localStorage.getItem('erp_users')) || [
         { id: '1', nombre: 'Administrador', user: 'admin', pass: 'admin123', role: 'ADMIN', unidad: 'ALL', area: 'ALL', depto: 'ALL' }
     ]
 };
+
+// Cargar Branding Guardado (Local o Cloud)
+function loadBranding() {
+    const saved = localStorage.getItem('erp_branding');
+    if (saved) {
+        const config = JSON.parse(saved);
+        appData.organizacion = { ...appData.organizacion, ...config };
+    }
+    applyBranding();
+}
+
+function applyBranding() {
+    const logoImgs = ['splash-img', 'login-logo-img', 'conf-logo-preview', 'sidebar-logo-img'];
+    logoImgs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.src = appData.organizacion.logo;
+    });
+
+    const loginName = document.getElementById('login-app-name');
+    if (loginName) loginName.innerHTML = appData.organizacion.name.replace(' ', ' <br><span class="text-blue-600">') + '</span>';
+    
+    const sideName = document.getElementById('login-app-name-side');
+    if (sideName) sideName.innerText = appData.organizacion.name;
+    
+    document.title = appData.organizacion.name;
+}
+
+// Función global para ocultar splash screen
+window.hideSplashScreen = () => {
+    console.log("Ocultando Splash Screen...");
+    const splash = document.getElementById('splash-screen');
+    if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => {
+            splash.style.display = 'none';
+            // Si hay sesión activa, ocultar login también
+            if (sessionStorage.getItem('erp_current_user')) {
+                const login = document.getElementById('login-screen');
+                if (login) login.style.display = 'none';
+            }
+        }, 800);
+    }
+};
+
+// HELPER: Validar si un string es un UUID válido
+function isValidUUID(uuid) {
+    const s = "" + uuid;
+    const re = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return re.test(s);
+}
+
+// HELPER: Asegurar que un ID sea UUID o generarlo
+function ensureUUID(id) {
+    if (isValidUUID(id)) return id;
+    return crypto.randomUUID();
+}
 
 // CONFIG SUPABASE
 // CONFIG SUPABASE
@@ -43,7 +102,6 @@ async function save() {
             
             // Sincronizar TODAS las tablas críticas y capturar errores
             const results = await Promise.allSettled([
-                // _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
                 _supabase.from('personal').upsert(appData.personal.map(p => {
                     let fechaSupabase = p.alta;
                     if (p.alta && p.alta.includes('/')) {
@@ -83,90 +141,78 @@ async function save() {
                     archivo_tipo: c.archivo,
                     file_name: c.fileName,
                     file_data: c.fileData
-                })), { onConflict: 'id' }), // Cambiado a 'id' para mayor seguridad
-                // _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
-                _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' }),
+                })), { onConflict: 'id' }),
+                _supabase.from('unidades').upsert(appData.unidades.map(u => ({ 
+                    id: isValidUUID(u.id) ? u.id : undefined, // Dejar que Supabase genere el UUID si no es válido
+                    name: u.name 
+                })), { onConflict: 'id' }),
                 _supabase.from('areas').upsert(appData.areas.map(a => ({
-                    id: a.id,
-                    unit_id: a.unitId,
+                    id: isValidUUID(a.id) ? a.id : undefined,
+                    unit_id: isValidUUID(a.unitId) ? a.unitId : undefined,
                     name: a.name
                 })), { onConflict: 'id' }),
                 _supabase.from('departamentos').upsert(appData.departamentos.map(d => ({
-                    id: d.id,
-                    area_id: d.areaId,
+                    id: isValidUUID(d.id) ? d.id : undefined,
+                    area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
                     name: d.name
                 })), { onConflict: 'id' }),
-                // _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' }),
                 _supabase.from('app_users').upsert(appData.users.map(u => ({
                     nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
                     unidad: u.unidad, area: u.area, depto: u.depto
                 })), { onConflict: 'username' })
             ]);
+            console.log("Sincronización con Supabase completada con éxito.");
 
-            results.forEach((res, i) => {
-                const tableNames = ['Personal', 'Matrices', 'Catalogo', 'Unidades', 'Areas', 'Departamentos', 'Usuarios'];
-                const name = tableNames[i] || i;
-
-                if (res.status === 'rejected') {
-                    console.error(`Error crítico en tabla ${name}:`, res.reason);
-                } else if (res.value.error) {
-                    const errorMsg = `Error en Supabase (Tabla ${name}): ${res.value.error.message}`;
-                    console.error(errorMsg);
-                    // Alertar sobre CUALQUIER error de Supabase para diagnóstico
-                    alert(errorMsg + "\n\nEste registro no se pudo sincronizar.");
-                }
-            });
-
+            console.log("Datos sincronizados con la nube correctamente.");
         } catch(e) { 
-            console.error("Critical Sync Error:", e); 
-            alert("Error crítico de conexión: " + e.message);
+            console.warn("Aviso: No se pudo subir todo a la nube (posible tabla vacía o RLS), pero se guardó localmente:", e); 
         }
         
         if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
             render();
         }
-    }, 1000);
+    }, 1500);
 }
+
+// BRANDING LOGIC
+function handleLogoChange(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            appData.organizacion.logo = e.target.result;
+            document.getElementById('conf-logo-preview').src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function saveBrandingConfig() {
+    appData.organizacion.name = document.getElementById('conf-app-name').value;
+    appData.organizacion.slogan = document.getElementById('conf-app-slogan').value;
+    
+    localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
+    applyBranding();
+    alert("¡Configuración de marca guardada con éxito!");
+}
+
+function initApp() {
+    loadBranding(); // Cargar logo y nombre primero
+    syncFromCloud();
+    render();
+    
+    // Inyectar valores actuales en el formulario de config
+    document.getElementById('conf-app-name').value = appData.organizacion.name;
+    document.getElementById('conf-app-slogan').value = appData.organizacion.slogan;
+}
+
+initApp();
 
 async function syncFromCloud() {
     try {
-        console.log("Sincronizando con Supabase...");
+        console.log("Iniciando sincronización prioritaria...");
         
-        /*
-        // Cargar Configuración (Nombre de Empresa)
-        const { data: config } = await _supabase.from('app_config').select('org_name').eq('id', 1).single();
-        if(config) {
-            appData.organizacion.name = config.org_name;
-            // Actualizar logo en sidebar si existe
-            const logoText = document.querySelector('.logo-text');
-            if(logoText) logoText.innerText = config.org_name;
-        }
-        */
-
-        const { data: pers } = await _supabase.from('personal').select('*');
-        if(pers && pers.length > 0) {
-            appData.personal = pers.map(p => {
-                // Re-formatear fecha para la App (DD/MM/YYYY) si viene de la nube
-                let fechaApp = p.alta;
-                if (p.alta && p.alta.includes('-')) {
-                    const [y, m, d] = p.alta.split('-');
-                    fechaApp = `${d}/${m}/${y}`;
-                }
-                
-                return {
-                    ficha: p.ficha,
-                    nombre: p.nombre,
-                    apPaterno: p.up_paterno || p.ap_paterno, // Soporta ambos por si corriges el nombre en DB
-                    apMaterno: p.ap_materno,
-                    alta: fechaApp,
-                    unidad: p.unidad,
-                    area: p.area,
-                    depto: p.depto,
-                    perfilAsignado: p.perfil_asignado
-                };
-            });
-        }
-
+        // 1. PRIORIDAD: Usuarios para mostrar perfil rápido
         const { data: users } = await _supabase.from('app_users').select('*');
         if(users && users.length > 0) {
             appData.users = users.map(u => ({
@@ -178,61 +224,80 @@ async function syncFromCloud() {
                 area: u.area,
                 depto: u.depto
             }));
+            render(); // Renderizado rápido para mostrar nombre de usuario
         }
 
-        const { data: mats } = await _supabase.from('matrices').select('*');
-        if(mats && mats.length > 0) {
-            appData.matrices = mats.map(m => ({
-                id: m.id,
-                name: m.name,
-                depto: m.depto,
-                category: m.category,
-                start: m.start_date,
-                end: m.end_date,
-                topics: m.topics,
-                attendance: m.attendance
+        // 2. RESTO DE TABLAS EN PARALELO
+        const [pRes, mRes, cRes, uRes, aRes, dRes] = await Promise.all([
+            _supabase.from('personal').select('*'),
+            _supabase.from('matrices').select('*'),
+            _supabase.from('catalogo').select('*'),
+            _supabase.from('unidades').select('*'),
+            _supabase.from('areas').select('*'),
+            _supabase.from('departamentos').select('*')
+        ]);
+
+        if(pRes.data) {
+            appData.personal = pRes.data.map(p => {
+                let fechaApp = p.alta;
+                if (p.alta && p.alta.includes('-')) {
+                    const [y, m, d] = p.alta.split('-');
+                    fechaApp = `${d}/${m}/${y}`;
+                }
+                return {
+                    ficha: p.ficha,
+                    nombre: p.nombre,
+                    apPaterno: p.ap_paterno,
+                    apMaterno: p.ap_materno,
+                    alta: fechaApp,
+                    unidad: p.unidad,
+                    area: p.area,
+                    depto: p.depto,
+                    perfilAsignado: p.perfil_asignado
+                };
+            });
+        }
+
+        if(mRes.data) {
+            appData.matrices = mRes.data.map(m => ({
+                id: m.id, name: m.name, depto: m.depto, category: m.category,
+                start: m.start_date, end: m.end_date, topics: m.topics, attendance: m.attendance
             }));
         }
 
-        const { data: cats } = await _supabase.from('catalogo').select('*');
-        if(cats && cats.length > 0) {
-            appData.catalogo = cats.map(c => ({
-                id: c.id, // Guardar el ID de la nube
-                codigo: c.codigo,
-                nombre: c.nombre,
-                categoria: c.categoria,
-                areaAplica: c.area_aplica,
-                descripcion: c.descripcion,
-                instructor: c.instructor,
-                archivo: c.archivo_tipo,
-                fileName: c.file_name,
-                fileData: c.file_data
+        if(cRes.data) {
+            console.log("Datos de Catálogo cargados:", cRes.data.length);
+            appData.catalogo = cRes.data.map(c => ({
+                id: c.id, 
+                codigo: c.codigo || '', 
+                nombre: c.nombre || '', 
+                categoria: c.categoria || 'Procedimiento',
+                areaAplica: c.area_aplica || '', 
+                descripcion: c.descripcion || '',
+                instructor: c.instructor || '', 
+                archivo: c.archivo_tipo || '',
+                fileName: c.file_name || '', 
+                fileData: c.file_data || null
+            }));
+            localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
+        }
+
+        if(uRes.data) appData.unidades = uRes.data;
+        
+        if(aRes.data) {
+            appData.areas = aRes.data.map(a => ({
+                id: a.id, unitId: a.unit_id, name: a.name
+            }));
+        }
+
+        if(dRes.data) {
+            appData.departamentos = dRes.data.map(d => ({
+                id: d.id, areaId: d.area_id, name: d.name
             }));
         }
 
         const { data: perfs } = await _supabase.from('perfiles').select('*');
         if(perfs && perfs.length > 0) appData.perfiles = perfs;
-
-        const { data: units } = await _supabase.from('unidades').select('*');
-        if(units && units.length > 0) appData.unidades = units;
-
-        const { data: areas } = await _supabase.from('areas').select('*');
-        if(areas && areas.length > 0) {
-            appData.areas = areas.map(a => ({
-                id: a.id,
-                unitId: a.unit_id,
-                name: a.name
-            }));
-        }
-
-        const { data: depts } = await _supabase.from('departamentos').select('*');
-        if(depts && depts.length > 0) {
-            appData.departamentos = depts.map(d => ({
-                id: d.id,
-                areaId: d.area_id,
-                name: d.name
-            }));
-        }
 
         const { data: inst } = await _supabase.from('instructores').select('*');
         if(inst && inst.length > 0) appData.instructors = inst;
@@ -1072,49 +1137,84 @@ function switchTab(id, btn) {
             document.getElementById('monthly-report-modal').classList.add('hidden'); 
         };
 
-function renderCatalogo() {
-    const types = [
-        {id: 'procedimientos', filter: 'Procedimiento'},
-        {id: 'normas', filter: 'Normas'},
-        {id: 'seguridad', filter: 'Seguridad'},
-        {id: 'salud', filter: 'Salud'},
-        {id: 'tecnico', filter: 'Tecnico'}
-    ];
+function renderCatalogo(categoryFilter = null) {
+    const container = document.getElementById('list-catalogo');
+    if(!container) return;
+
+    console.log("Renderizando Catálogo con filtro:", categoryFilter);
+    
+    // Filtrar por categoría si se especifica, o mostrar todo si es null
+    let filtered = appData.catalogo;
+    if (categoryFilter) {
+        if (categoryFilter === 'Tecnico') {
+            // Caso especial para temas técnicos (todo lo que no sea de las categorías principales)
+            filtered = appData.catalogo.filter(c => !['Procedimiento', 'Normas', 'Seguridad', 'Salud'].includes(c.categoria));
+        } else {
+            filtered = appData.catalogo.filter(c => c.categoria === categoryFilter);
+        }
+    }
+
+    // Aplicar también filtro de búsqueda si existe
+    const search = document.getElementById('filter-cat-search')?.value.toLowerCase() || "";
+    if (search) {
+        filtered = filtered.filter(c => 
+            c.nombre.toLowerCase().includes(search) || 
+            c.codigo.toLowerCase().includes(search)
+        );
+    }
 
     const getFileIcon = (type, idx) => {
         const icons = { 'PDF': 'file-text', 'Word': 'file-type-2', 'Excel': 'file-spreadsheet', 'PowerPoint': 'presentation', 'Video': 'video' };
         const colors = { 'PDF': 'text-rose-600', 'Word': 'text-blue-600', 'Excel': 'text-emerald-600', 'PowerPoint': 'text-orange-600', 'Video': 'text-purple-600' };
-        return `<div onclick="viewCatalogoFile(${idx})" class="flex items-center justify-center gap-1 cursor-pointer hover:scale-110 transition-transform ${colors[type] || 'text-slate-400'}">
-                    <i data-lucide="${icons[type] || 'file'}" size="14"></i>
-                    <span class="text-[9px] font-black">${type}</span>
+        return `<div onclick="viewCatalogoFile(${idx})" class="flex items-center justify-center gap-2 cursor-pointer hover:scale-110 transition-transform ${colors[type] || 'text-slate-400'}">
+                    <i data-lucide="${icons[type] || 'file'}" size="16"></i>
+                    <span class="text-[10px] font-black">${type}</span>
                 </div>`;
     };
 
-    types.forEach(t => {
-        const container = document.getElementById(`list-cat-${t.id}`);
-        if(!container) return;
-        const items = appData.catalogo.map((item, idx) => ({item, idx})).filter(x => x.item.categoria === t.filter || (t.id === 'tecnico' && !['Procedimiento', 'Normas', 'Seguridad', 'Salud'].includes(x.item.categoria)));
-        
-        container.innerHTML = items.length ? items.map(x => `
-            <tr class="hover:bg-slate-50 transition-all text-xs">
-                <td class="p-4 font-black text-slate-500">${x.item.codigo || 'S/C'}</td>
-                <td class="p-4 font-black text-slate-900 uppercase">${x.item.nombre}</td>
-                <td class="p-4"><span class="text-[10px] font-bold text-slate-600 uppercase">${x.item.areaAplica || 'GENERAL'}</span></td>
-                <td class="p-4"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-black uppercase">${x.item.categoria}</span></td>
-                <td class="p-4 font-bold text-indigo-600">${x.item.instructor}</td>
-                <td class="p-4 text-center">${getFileIcon(x.item.archivo || 'PDF', x.idx)}</td>
-                <td class="p-4 text-center">
-                    <div class="flex items-center justify-center gap-1">
-                        ${currentUser.role === 'ADMIN' ? `
-                            <button onclick="openCatalogoModal(null, ${x.idx})" class="p-1 text-slate-300 hover:text-blue-500 transition-colors"><i data-lucide="edit-3" size="14"></i></button>
-                            <button onclick="deleteCatalogoItem(${x.idx})" class="p-1 text-slate-300 hover:text-rose-500 transition-colors"><i data-lucide="trash-2" size="14"></i></button>
-                        ` : '<span class="text-[8px] font-black text-slate-300 uppercase tracking-widest">Solo Lectura</span>'}
-                    </div>
-                </td>
-            </tr>
-        `).join('') : `<tr><td colspan="7" class="p-8 text-center text-slate-300 font-bold uppercase tracking-widest text-[10px]">No hay registros en esta categoría</td></tr>`;
-    });
-    lucide.createIcons();
+    container.innerHTML = filtered.length ? filtered.map((item, idx) => `
+        <tr class="hover:bg-slate-50 transition-all border-b border-slate-50">
+            <td class="p-6">
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${item.codigo || 'S/C'}</div>
+            </td>
+            <td class="p-6">
+                <div class="text-xs font-black text-slate-900 uppercase tracking-tight">${item.nombre}</div>
+                <div class="text-[9px] font-bold text-slate-400 uppercase mt-0.5">${item.descripcion || ''}</div>
+            </td>
+            <td class="p-6">
+                <div class="flex flex-col gap-1">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">${item.categoria}</span>
+                    <span class="text-[9px] font-bold text-slate-400 uppercase">${item.areaAplica || 'GENERAL'}</span>
+                </div>
+            </td>
+            <td class="p-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500">${item.instructor ? item.instructor.charAt(0) : '?'}</div>
+                    <span class="text-[10px] font-bold text-slate-600 uppercase">${item.instructor || 'SIN ASIGNAR'}</span>
+                </div>
+            </td>
+            <td class="p-6 text-center">${getFileIcon(item.archivo || 'PDF', idx)}</td>
+            <td class="p-6">
+                <div class="flex items-center justify-center gap-2">
+                    ${currentUser.role === 'ADMIN' ? `
+                        <button onclick="openCatalogoModal(null, ${idx})" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all"><i data-lucide="edit-3" size="14"></i></button>
+                        <button onclick="deleteCatalogoItem(${idx})" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="14"></i></button>
+                    ` : '<span class="text-[8px] font-black text-slate-300 uppercase tracking-widest">Vista</span>'}
+                </div>
+            </td>
+        </tr>
+    `).join('') : `
+        <tr>
+            <td colspan="6" class="p-20 text-center">
+                <div class="flex flex-col items-center opacity-20">
+                    <i data-lucide="folder-open" size="48" class="mb-4"></i>
+                    <p class="text-[10px] font-black uppercase tracking-[0.3em]">No hay registros en esta categoría</p>
+                </div>
+            </td>
+        </tr>
+    `;
+    
+    if (window.lucide) lucide.createIcons();
 }
 
 function toggleNewAreaField() {
@@ -2241,30 +2341,42 @@ function importCatalogoFromExcel(ev) {
     window.closeInstructorModal = () => document.getElementById('instructor-modal').classList.add('hidden');
     window.deleteInstructor = (id) => { if(confirm('¿Eliminar instructor?')) { appData.instructors = appData.instructors.filter(i => i.id !== id); save(); } };
 
-function showView(id, el) {
-    if(!currentUser) return;
-    
-    // Forzar visibilidad de menús admin si el rol es correcto
-    if(currentUser.role === 'ADMIN') {
-        const am = document.getElementById('admin-menu');
-        if(am) am.classList.remove('hidden');
+function showView(id, categoryFilter, element) {
+    // Si el segundo argumento es un elemento (de los botones principales), reordenar
+    let filter = null;
+    let el = element;
+    if (typeof categoryFilter === 'string') {
+        filter = categoryFilter;
+    } else if (categoryFilter && categoryFilter.classList) {
+        el = categoryFilter;
     }
 
-    document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
-    const targetView = document.getElementById('view-' + id);
-    if(targetView) targetView.classList.add('active');
+    console.log("Cambiando a vista:", id, "Filtro:", filter);
+    
+    document.querySelectorAll('.tab-content').forEach(s => {
+        s.classList.remove('active');
+        s.style.display = 'none';
+    });
+    
+    const targetView = document.getElementById('tab-' + id);
+    if(targetView) {
+        targetView.classList.add('active');
+        targetView.style.display = 'block';
+    }
     
     document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-    if(el) el.classList.add('active');
+    if(el && el.classList) el.classList.add('active');
     
+    // Renderizar con filtro si aplica (especialmente para Catálogo)
     if(id === 'dashboard') renderDashboard();
     if(id === 'matrices') renderMatricesHierarchy();
-    if(id === 'instructores') renderInstructors();
     if(id === 'personal') renderPersonal();
+    if(id === 'catalogo') renderCatalogo(filter); 
+    if(id === 'users') renderUsers();
+    if(id === 'instructores') renderInstructors();
     if(id === 'estructura') renderEstructura();
-    if(id === 'usuarios') renderUsers();
     
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
 }
 
 window.openLearningMap = (ficha) => {
@@ -2667,7 +2779,7 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
         currentUser = ses;
         window.currentUser = ses;
         
-        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('login-screen').style.display = 'none';
         
         // Carga inicial tras login
         syncFromCloud().then(() => {
@@ -2679,16 +2791,27 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
     };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log("App Iniciada - Verificando Sesión");
+    
+    // Quitar splash screen pase lo que pase tras 1.5 segundos (Solución definitiva al hang)
+    setTimeout(() => {
+        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
+    }, 1500);
+
     if (currentUser) {
-        document.getElementById('login-screen').classList.add('hidden');
-        await syncFromCloud(); // Carga inicial y asegura datos actualizados
+        const login = document.getElementById('login-screen');
+        if (login) login.style.display = 'none';
+        
+        // Carga inicial rápida de datos locales
         render();
-        // Sincronización automática cada 30 segundos
-        setInterval(() => {
-            if (currentUser) syncFromCloud();
-        }, 30000);
+        
+        // Sincronización en segundo plano sin bloquear el UI
+        syncFromCloud().catch(e => console.warn("Sync Background Error:", e));
     } else {
-        document.getElementById('login-screen').classList.remove('hidden');
+        const login = document.getElementById('login-screen');
+        if (login) login.style.display = 'flex';
+        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
     }
-    lucide.createIcons();
+    
+    if (window.lucide) lucide.createIcons();
 });
