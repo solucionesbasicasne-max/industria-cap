@@ -294,18 +294,9 @@ window.deleteWorkerByUid = (uid) => {
 };
 
 function renderEstructura() {
-    const cont = document.getElementById('view-estructura'); if(!cont) return;
-    cont.innerHTML = `
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-3xl font-black text-slate-900 tracking-tight">Estructura Organizacional</h1>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Control jerárquico de unidades, áreas y departamentos</p>
-            </div>
-            <button onclick="openEstructuraModal('unidad')" class="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center gap-2">
-                <i data-lucide="plus" size="14"></i> + UNIDAD
-            </button>
-        </div>
-
+    const tree = document.getElementById('org-tree');
+    if(!tree) return;
+    tree.innerHTML = `
         <div class="bg-slate-900 rounded-[40px] p-10 shadow-2xl relative overflow-hidden border border-slate-800">
             <div class="absolute top-0 right-0 p-8 opacity-10">
                 <i data-lucide="network" size="120" class="text-white"></i>
@@ -340,21 +331,28 @@ function editOrganizacion() {
     }
 }
 
-function renderUnidad(u) {
+function renderUnidadCard(u) {
     const areas = appData.areas.filter(a => a.unitId === u.id);
     return `
-        <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div class="flex justify-between items-center mb-5">
-                <div class="flex items-center gap-3">
-                    <h3 class="font-bold text-white text-lg">${u.name}</h3>
-                    <div class="flex gap-1">
-                        <button onclick="editNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-blue-400"><i data-lucide="edit-2" size="12"></i></button>
-                        <button onclick="deleteNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-rose-500"><i data-lucide="trash-2" size="12"></i></button>
+        <div class="bg-white/5 border border-white/10 rounded-[30px] p-8 shadow-xl">
+            <div class="flex justify-between items-center mb-8">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-blue-600/20 text-blue-400 rounded-2xl flex items-center justify-center font-black text-xl border border-blue-400/20">${u.name.charAt(0)}</div>
+                    <div>
+                        <h3 class="text-xl font-black text-white uppercase tracking-tight">${u.name}</h3>
+                        <div class="flex gap-2 mt-1">
+                            <button onclick="editNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-blue-400 transition-colors"><i data-lucide="edit-2" size="14"></i></button>
+                            <button onclick="deleteNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-rose-500 transition-colors"><i data-lucide="trash-2" size="14"></i></button>
+                        </div>
                     </div>
                 </div>
-                <button onclick="openEstructuraModal('area', ${u.id})" class="p-1.5 text-blue-400 hover:bg-blue-400/20 rounded-lg transition-all"><i data-lucide="plus" size="14"></i></button>
+                <button onclick="openEstructuraModal('area', ${u.id})" class="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20">
+                    <i data-lucide="plus" size="16"></i>
+                </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${areas.map(a => renderArea(a)).join('')}</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                ${areas.map(a => renderArea(a)).join('')}
+            </div>
         </div>
     `;
 }
