@@ -78,15 +78,24 @@ async function save() {
             ]);
 
             results.forEach((res, i) => {
+                const tableNames = ['Config', 'Personal', 'Matrices', 'Catalogo', 'Perfiles', 'Unidades', 'Areas', 'Departamentos', 'Instructores', 'Usuarios'];
+                const name = tableNames[i] || i;
+
                 if (res.status === 'rejected') {
-                    console.error(`Error en sincronización tabla ${i}:`, res.reason);
+                    console.error(`Error crítico en tabla ${name}:`, res.reason);
                 } else if (res.value.error) {
-                    console.error(`Error de Supabase en tabla ${i}:`, res.value.error.message);
+                    const errorMsg = `Error en Supabase (Tabla ${name}): ${res.value.error.message}`;
+                    console.error(errorMsg);
+                    // Solo alertar si es un error grave de permisos o estructura
+                    if (res.value.error.code === '42P1' || res.value.error.message.includes('policy')) {
+                        alert(errorMsg + "\n\nVerifica las políticas RLS y que las columnas existan en Supabase.");
+                    }
                 }
             });
 
         } catch(e) { 
             console.error("Critical Sync Error:", e); 
+            alert("Error crítico de conexión: " + e.message);
         }
         
         if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
