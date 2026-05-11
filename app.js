@@ -73,6 +73,7 @@ async function save() {
                     attendance: m.attendance
                 })), { onConflict: 'id' }),
                 _supabase.from('catalogo').upsert(appData.catalogo.map(c => ({
+                    id: c.id, 
                     codigo: c.codigo,
                     nombre: c.nombre,
                     categoria: c.categoria,
@@ -82,7 +83,7 @@ async function save() {
                     archivo_tipo: c.archivo,
                     file_name: c.fileName,
                     file_data: c.fileData
-                })), { onConflict: 'codigo' }),
+                })), { onConflict: 'id' }), // Cambiado a 'id' para mayor seguridad
                 _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
                 _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' }),
                 _supabase.from('areas').upsert(appData.areas.map(a => ({
@@ -111,10 +112,8 @@ async function save() {
                 } else if (res.value.error) {
                     const errorMsg = `Error en Supabase (Tabla ${name}): ${res.value.error.message}`;
                     console.error(errorMsg);
-                    // Solo alertar si es un error grave de permisos o estructura
-                    if (res.value.error.code === '42P1' || res.value.error.message.includes('policy')) {
-                        alert(errorMsg + "\n\nVerifica las políticas RLS y que las columnas existan en Supabase.");
-                    }
+                    // Alertar sobre CUALQUIER error de Supabase para diagnóstico
+                    alert(errorMsg + "\n\nEste registro no se pudo sincronizar.");
                 }
             });
 
@@ -196,6 +195,7 @@ async function syncFromCloud() {
         const { data: cats } = await _supabase.from('catalogo').select('*');
         if(cats && cats.length > 0) {
             appData.catalogo = cats.map(c => ({
+                id: c.id, // Guardar el ID de la nube
                 codigo: c.codigo,
                 nombre: c.nombre,
                 categoria: c.categoria,
@@ -1309,8 +1309,12 @@ function saveCatalogoItem() {
     if(areaSelect === 'NUEVA AREA' && !newArea) return alert("Especifique el nombre de la nueva área");
     
     if(currentEditCatIdx !== null) {
+        // Mantener el ID si ya existe
+        item.id = appData.catalogo[currentEditCatIdx].id;
         appData.catalogo[currentEditCatIdx] = item;
     } else {
+        // Generar un ID único real para Supabase
+        item.id = crypto.randomUUID();
         appData.catalogo.push(item);
     }
     
