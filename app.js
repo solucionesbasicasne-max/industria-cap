@@ -379,13 +379,23 @@ function renderArea(a) {
     return `
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col transition-all">
             <div class="flex justify-between items-center mb-4">
-                <span class="text-[10px] font-black text-slate-400 uppercase">Nivel 3: Área</span>
+                <div class="flex flex-col">
+                    <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Nivel 3: Área</span>
+                    <div class="flex items-center gap-2">
+                        <h4 class="font-black text-slate-900 text-xs">${a.name}</h4>
+                        ${currentUser.role === 'ADMIN' ? `
+                            <div class="flex gap-1">
+                                <button onclick="editNode('area', ${a.id})" class="p-1 text-slate-300 hover:text-blue-600 transition-colors"><i data-lucide="edit-2" size="10"></i></button>
+                                <button onclick="deleteNode('area', ${a.id})" class="p-1 text-slate-300 hover:text-rose-600 transition-colors"><i data-lucide="trash-2" size="10"></i></button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
                 <div class="flex gap-1">
                     <button onclick="toggleArea(${a.id})" class="p-1 text-slate-300 hover:text-blue-600"><i data-lucide="${isCollapsed ? 'maximize-2' : 'minimize-2'}" size="12"></i></button>
-                    <button onclick="openEstructuraModal('depto', ${a.id})" class="p-1 text-blue-600 rounded"><i data-lucide="plus-circle" size="12"></i></button>
+                    <button onclick="openEstructuraModal('depto', ${a.id})" class="p-1 text-blue-600 rounded hover:bg-blue-50"><i data-lucide="plus-circle" size="12"></i></button>
                 </div>
             </div>
-            <h4 class="font-black text-slate-900 text-xs mb-4">${a.name}</h4>
             <div class="space-y-3 ${isCollapsed ? 'hidden' : ''}">${deptos.map(d => renderDepto(d)).join('')}</div>
         </div>
     `;
@@ -394,13 +404,21 @@ function renderArea(a) {
 function renderDepto(d) {
     const countPers = appData.personal.filter(p => p.depto === d.name).length;
     return `
-        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-            <h5 class="text-[11px] font-bold text-slate-900 mb-3">${d.name}</h5>
+        <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 group">
+            <div class="flex justify-between items-center mb-3">
+                <h5 class="text-[11px] font-bold text-slate-900">${d.name}</h5>
+                ${currentUser.role === 'ADMIN' ? `
+                    <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="editNode('depto', ${d.id})" class="p-1 text-slate-400 hover:text-blue-600"><i data-lucide="edit-2" size="10"></i></button>
+                        <button onclick="deleteNode('depto', ${d.id})" class="p-1 text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" size="10"></i></button>
+                    </div>
+                ` : ''}
+            </div>
             <div class="flex gap-2">
-                <div onclick="showNodeDetails('personal_list', '${d.name}')" class="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[8px] font-black cursor-pointer">
+                <div onclick="showNodeDetails('personal_list', '${d.name}')" class="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[8px] font-black cursor-pointer hover:bg-blue-200 transition-all">
                     <i data-lucide="users" size="10"></i> ${countPers} PERS
                 </div>
-                <button onclick="openEstructuraModal('asignar_personal', null, '${d.name}')" class="px-2 py-1 text-[7px] font-black text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50">+ ASIGNAR</button>
+                <button onclick="openEstructuraModal('asignar_personal', null, '${d.name}')" class="px-2 py-1 text-[7px] font-black text-blue-600 border border-blue-200 rounded-md hover:bg-blue-600 hover:text-white transition-all">+ ASIGNAR</button>
             </div>
         </div>
     `;
