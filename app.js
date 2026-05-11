@@ -19,8 +19,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null;
-
+let saveTimeout;
 async function save() {
+    // Guardado Local Inmediato para evitar pérdida de datos
     localStorage.setItem('erp_org', JSON.stringify(appData.organizacion));
     localStorage.setItem('erp_pers', JSON.stringify(appData.personal));
     localStorage.setItem('erp_perf', JSON.stringify(appData.perfiles));
@@ -31,38 +32,24 @@ async function save() {
     localStorage.setItem('erp_deptos', JSON.stringify(appData.departamentos));
     localStorage.setItem('erp_instructors', JSON.stringify(appData.instructors));
     localStorage.setItem('erp_users', JSON.stringify(appData.users));
-    
-    // Sincronización Nube (Background)
-    try {
-        // Guardar nombre de la organización
-        await _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' });
 
-        await _supabase.from('personal').upsert(appData.personal.map(p => ({
-            ficha: p.ficha,
-            nombre: p.nombre,
-            ap_paterno: p.apPaterno,
-            ap_materno: p.apMaterno,
-            alta: p.alta,
-            unidad: p.unidad,
-            area: p.area,
-            depto: p.depto,
-            perfil_asignado: p.perfilAsignado
-        })), { onConflict: 'ficha' });
+    // Debounce para Sincronización Nube y Rerenderizado pesado
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+        try {
+            await _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' });
+            await _supabase.from('personal').upsert(appData.personal.map(p => ({
+                ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
+                alta: p.alta, unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
+            })), { onConflict: 'ficha' });
+            await _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' });
+        } catch(e) { console.warn("Background Sync Delay:", e); }
         
-        await _supabase.from('app_users').upsert(appData.users.map(u => ({
-            nombre: u.nombre,
-            username: u.user,
-            password: u.pass,
-            role: u.role,
-            unidad: u.unidad,
-            area: u.area,
-            depto: u.depto
-        })), { onConflict: 'username' });
-
-        await _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' });
-    } catch(e) { console.error("Cloud Sync Error:", e); }
-
-    render();
+        // Solo renderizar si no estamos en una vista de edición activa
+        if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
+            render();
+        }
+    }, 500);
 }
 
 async function syncFromCloud() {
@@ -475,13 +462,29 @@ function showNodeDetails(type, name) {
                         <div class="text-[9px] text-slate-400 font-bold">FICHA: ${item.p.ficha}</div>
                         <div class="text-[9px] text-indigo-600 font-black mt-1 uppercase">${item.p.perfilAsignado || 'Sin Perfil Asignado'}</div>
                     </div>
-                    <button onclick="openAssignProfileModal(${item.idx})" class="px-3 py-1.5 bg-blue-600 text-white text-[9px] font-black rounded-lg shadow-md shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all uppercase">
-                        Asignar Perfil
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="openAssignProfileModal(${item.idx})" class="px-3 py-1.5 bg-blue-600 text-white text-[9px] font-black rounded-lg shadow-md hover:bg-blue-700 transition-all uppercase">
+                            Perfil
+                        </button>
+                        ${currentUser.role === 'ADMIN' ? `
+                            <button onclick="unassignFromDepto(${item.idx})" class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Quitar de este Departamento">
+                                <i data-lucide="user-minus" size="14"></i>
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
             `).join('') : '<p class="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">No hay personal asignado a este departamento</p>';
         }
     }
+    
+    window.unassignFromDepto = (idx) => {
+        if(confirm(`¿Quitar a ${appData.personal[idx].nombre} de este departamento?`)) {
+            appData.personal[idx].depto = "";
+            appData.personal[idx].perfilAsignado = "";
+            save();
+            closeEstructuraModal();
+        }
+    };
     
     saveBtn.innerText = "CERRAR";
     saveBtn.classList.remove('hidden');
@@ -499,27 +502,72 @@ function openEstructuraModal(type, parentId = null, deptoName = null) {
     const temp = document.getElementById('temp-detail'); if(temp) temp.remove();
     m.classList.remove('hidden'); nameContainer.classList.remove('hidden'); selectorContainer.classList.add('hidden');
     nameInput.readOnly = false; btn.disabled = false; btn.innerText = "CONFIRMAR";
+
     if(type === 'asignar_personal') {
-        title.innerText = `Asignar a ${deptoName}`;
-        nameContainer.classList.add('hidden'); selectorContainer.classList.remove('hidden');
+        title.innerText = `ASIGNAR PERSONAL A: ${deptoName}`;
+        nameContainer.classList.add('hidden');
+        selectorContainer.classList.remove('hidden');
         document.getElementById('search-bar-container').classList.remove('hidden');
-        const available = appData.personal.filter(p => !p.depto || p.depto === '');
-        const listContainer = document.getElementById('est-person-list');
-        const searchInput = document.getElementById('est-person-search');
-        const renderAvailableList = (filter = '') => {
-            const filtered = available.filter(p => p.ficha.toString().includes(filter) || p.nombre.toLowerCase().includes(filter.toLowerCase()));
-            listContainer.innerHTML = filtered.map(p => `<div onclick="selectPersonForDepto(this, '${p.ficha}')" class="person-item p-3 cursor-pointer hover:bg-slate-100"><span class="text-[10px] font-black">${p.nombre} ${p.apPaterno}</span><br><span class="text-[8px] text-slate-400">Ficha: ${p.ficha}</span></div>`).join('');
+        const list = document.getElementById('est-person-list');
+        btn.classList.add('hidden'); 
+
+        const renderBatchList = (search = "") => {
+            const available = appData.personal.filter(p => (!p.depto || p.depto === "") && (p.nombre.toLowerCase().includes(search.toLowerCase()) || p.ficha.toString().includes(search)));
+            list.innerHTML = `
+                <div class="p-4 bg-blue-50 border-b border-blue-100 flex justify-between items-center sticky top-0 z-10">
+                    <span id="count-selected" class="text-[9px] font-black text-blue-600 uppercase">0 SELECCIONADOS</span>
+                    <button onclick="assignSelectedToDepto('${deptoName}')" id="bulk-assign-btn" class="hidden bg-blue-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">Asignar ahora</button>
+                </div>
+                ${available.length ? available.map(p => `
+                    <label class="flex items-center gap-4 p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-all">
+                        <input type="checkbox" value="${p.ficha}" onchange="updateSelectedCount()" class="batch-check w-4 h-4 rounded border-slate-300 text-blue-600">
+                        <div>
+                            <div class="text-[10px] font-black text-slate-800 uppercase">${p.nombre} ${p.apPaterno}</div>
+                            <div class="text-[8px] text-slate-400 font-bold uppercase">FICHA: ${p.ficha} | ${p.unidad || 'SIN UNIDAD'}</div>
+                        </div>
+                    </label>
+                `).join('') : '<div class="p-8 text-center text-[10px] font-bold text-slate-400 uppercase">No hay personal disponible para asignar</div>'}
+            `;
         };
-        let selectedFicha = null;
-        window.selectPersonForDepto = (el, ficha) => {
-            document.querySelectorAll('.person-item').forEach(item => item.classList.remove('bg-blue-50'));
-            el.classList.add('bg-blue-50'); selectedFicha = ficha; btn.disabled = false;
+
+        window.updateSelectedCount = () => {
+            const checks = document.querySelectorAll('.batch-check:checked');
+            document.getElementById('count-selected').innerText = `${checks.length} SELECCIONADOS`;
+            document.getElementById('bulk-assign-btn').classList.toggle('hidden', checks.length === 0);
         };
-        searchInput.oninput = (e) => renderAvailableList(e.target.value);
-        renderAvailableList(); btn.disabled = true;
-        btn.onclick = () => { if(selectedFicha) { const person = appData.personal.find(p => p.ficha == selectedFicha); if(person) { person.depto = deptoName; save(); closeEstructuraModal(); } } };
+
+        window.assignSelectedToDepto = (dName) => {
+            const checks = document.querySelectorAll('.batch-check:checked');
+            checks.forEach(c => {
+                const person = appData.personal.find(p => p.ficha == c.value);
+                if(person) {
+                    person.depto = dName;
+                    const deptoObj = appData.departamentos.find(dep => dep.name === dName);
+                    if(deptoObj) {
+                        const areaObj = appData.areas.find(a => a.id === deptoObj.areaId);
+                        const unitObj = areaObj ? appData.unidades.find(u => u.id === areaObj.unitId) : null;
+                        if(areaObj) person.area = areaObj.name;
+                        if(unitObj) person.unidad = unitObj.name;
+                    }
+                }
+            });
+            save();
+            closeEstructuraModal();
+        };
+
+        document.getElementById('est-person-search').oninput = (e) => renderBatchList(e.target.value);
+        renderBatchList();
     } else {
-        btn.onclick = () => { const name = nameInput.value; if(name) { if(type === 'unidad') appData.unidades.push({id: Date.now(), name: name}); if(type === 'area') appData.areas.push({id: Date.now(), unitId: parentId, name: name}); if(type === 'depto') appData.departamentos.push({id: Date.now(), areaId: parentId, name: name}); save(); closeEstructuraModal(); } };
+        btn.onclick = () => { 
+            const name = nameInput.value; 
+            if(name) { 
+                if(type === 'unidad') appData.unidades.push({id: Date.now(), name: name}); 
+                if(type === 'area') appData.areas.push({id: Date.now(), unitId: parentId, name: name}); 
+                if(type === 'depto') appData.departamentos.push({id: Date.now(), areaId: parentId, name: name}); 
+                save(); 
+                closeEstructuraModal(); 
+            } 
+        };
     }
 }
 
