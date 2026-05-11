@@ -1570,14 +1570,43 @@ function deleteCatalogoItem(idx) {
         document.getElementById('area-modal').classList.remove('hidden');
     };
     window.closeAreaModal = () => document.getElementById('area-modal').classList.add('hidden');
+    
+    window.saveUnidad = () => {
+        const name = document.getElementById('unit-name').value;
+        if(!name) return alert("Nombre obligatorio");
+
+        if(currentEditUnitId) {
+            const idx = appData.unidades.findIndex(u => u.id === currentEditUnitId);
+            if(idx !== -1) appData.unidades[idx].name = name;
+        } else {
+            appData.unidades.push({ id: crypto.randomUUID(), name: name });
+        }
+
+        renderEstructura();
+        closeUnitModal();
+        save();
+    };
+
+    window.deleteUnidad = (id) => {
+        if(confirm('¿Eliminar esta unidad y toda su estructura relacionada?')) {
+            appData.unidades = appData.unidades.filter(u => u.id !== id);
+            const areasToRemove = appData.areas.filter(a => a.unitId === id).map(a => a.id);
+            appData.areas = appData.areas.filter(a => a.unitId !== id);
+            appData.departamentos = appData.departamentos.filter(d => !areasToRemove.includes(d.areaId));
+            
+            renderEstructura();
+            save();
+        }
+    };
+    
     window.saveArea = () => {
         const name = document.getElementById('new-area-name').value;
         if(!name) return alert("Nombre obligatorio");
-        const id = 'area_' + Date.now();
+        const id = crypto.randomUUID();
         appData.areas.push({ id, unitId: currentActiveUnitId, name });
-        save();
-        renderMatricesHierarchy();
+        renderEstructura();
         closeAreaModal();
+        save();
     };
 
     window.openDeptoModal = (areaId) => {
@@ -1586,13 +1615,15 @@ function deleteCatalogoItem(idx) {
         document.getElementById('depto-modal').classList.remove('hidden');
     };
     window.closeDeptoModal = () => document.getElementById('depto-modal').classList.add('hidden');
+
     window.saveDepto = () => {
         const name = document.getElementById('new-depto-name').value;
         if(!name) return alert("Nombre obligatorio");
-        appData.departamentos.push({ areaId: currentActiveAreaId, name });
-        save();
-        renderMatricesHierarchy();
+        const id = crypto.randomUUID();
+        appData.departamentos.push({ id, areaId: currentActiveAreaId, name });
+        renderEstructura();
         closeDeptoModal();
+        save();
     };
 
     // --- DETALLE DE MATRIZ (PERSONAL VS TEMAS) ---
