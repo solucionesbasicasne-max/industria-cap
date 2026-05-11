@@ -84,7 +84,7 @@ async function save() {
                     file_name: c.fileName,
                     file_data: c.fileData
                 })), { onConflict: 'id' }), // Cambiado a 'id' para mayor seguridad
-                _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
+                // _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
                 _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' }),
                 _supabase.from('areas').upsert(appData.areas.map(a => ({
                     id: a.id,
@@ -96,7 +96,7 @@ async function save() {
                     area_id: d.areaId,
                     name: d.name
                 })), { onConflict: 'id' }),
-                _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' }),
+                // _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' }),
                 _supabase.from('app_users').upsert(appData.users.map(u => ({
                     nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
                     unidad: u.unidad, area: u.area, depto: u.depto
@@ -104,7 +104,7 @@ async function save() {
             ]);
 
             results.forEach((res, i) => {
-                const tableNames = ['Config', 'Personal', 'Matrices', 'Catalogo', 'Perfiles', 'Unidades', 'Areas', 'Departamentos', 'Instructores', 'Usuarios'];
+                const tableNames = ['Personal', 'Matrices', 'Catalogo', 'Unidades', 'Areas', 'Departamentos', 'Usuarios'];
                 const name = tableNames[i] || i;
 
                 if (res.status === 'rejected') {
