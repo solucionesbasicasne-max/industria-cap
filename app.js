@@ -39,34 +39,44 @@ async function save() {
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
         try {
-            // Sincronizar TODAS las tablas críticas
-            await _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' });
+            console.log("Sincronizando cambios con Supabase...");
             
-            await _supabase.from('personal').upsert(appData.personal.map(p => ({
-                ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
-                alta: p.alta, unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
-            })), { onConflict: 'ficha' });
+            // Sincronizar TODAS las tablas críticas y capturar errores
+            const results = await Promise.allSettled([
+                _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
+                _supabase.from('personal').upsert(appData.personal.map(p => ({
+                    ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
+                    alta: p.alta, unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
+                })), { onConflict: 'ficha' }),
+                _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' }),
+                _supabase.from('catalogo').upsert(appData.catalogo, { onConflict: 'id' }),
+                _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' }),
+                _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' }),
+                _supabase.from('areas').upsert(appData.areas, { onConflict: 'id' }),
+                _supabase.from('departamentos').upsert(appData.departamentos, { onConflict: 'id' }),
+                _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' }),
+                _supabase.from('app_users').upsert(appData.users.map(u => ({
+                    nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
+                    unidad: u.unidad, area: u.area, depto: u.depto
+                })), { onConflict: 'username' })
+            ]);
 
-            await _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' });
-            await _supabase.from('catalogo').upsert(appData.catalogo, { onConflict: 'id' });
-            await _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' });
-            
-            await _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' });
-            await _supabase.from('areas').upsert(appData.areas, { onConflict: 'id' });
-            await _supabase.from('departamentos').upsert(appData.departamentos, { onConflict: 'id' });
-            await _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' });
+            results.forEach((res, i) => {
+                if (res.status === 'rejected') {
+                    console.error(`Error en sincronización tabla ${i}:`, res.reason);
+                } else if (res.value.error) {
+                    console.error(`Error de Supabase en tabla ${i}:`, res.value.error.message);
+                }
+            });
 
-            await _supabase.from('app_users').upsert(appData.users.map(u => ({
-                nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
-                unidad: u.unidad, area: u.area, depto: u.depto
-            })), { onConflict: 'username' });
-
-        } catch(e) { console.warn("Background Sync Delay:", e); }
+        } catch(e) { 
+            console.error("Critical Sync Error:", e); 
+        }
         
         if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
             render();
         }
-    }, 500);
+    }, 1000);
 }
 
 async function syncFromCloud() {
@@ -2355,12 +2365,6 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
     };
 
     // --- SEGURIDAD Y USUARIOS ---
-            render();
-            showView('dashboard', document.querySelector('.sidebar-item'));
-        } else {
-            alert("Credenciales incorrectas");
-        }
-    };
 
     window.handleLogout = () => {
         sessionStorage.removeItem('erp_current_user');
@@ -2505,52 +2509,72 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
     };
 
     window.handleLogin = async () => {
-    const user = document.getElementById('login-user').value.trim();
-    const pass = document.getElementById('login-pass').value.trim();
-    if (!user || !pass) {
-        alert('Usuario y contraseña son obligatorios');
-        return;
-    }
-    // Intentar autenticación contra Supabase
-    const { data, error } = await _supabase.from('app_users').select('*').eq('username', user).single();
-    let ses = null;
-    if (!error && data && data.password === pass) {
-        ses = {
-            id: data.id,
-            nombre: data.nombre,
-            user: data.username,
-            role: data.role,
-            unidad: data.unidad,
-            area: data.area,
-            depto: data.depto
-        };
-    } else {
-        // Fallback: buscar en datos locales (appData.users)
-        const localUser = appData.users.find(u => u.user === user && u.pass === pass);
-        if (localUser) {
-            ses = {
-                id: localUser.id,
-                nombre: localUser.nombre,
-                user: localUser.user,
-                role: localUser.role,
-                unidad: localUser.unidad,
-                area: localUser.area,
-                depto: localUser.depto
-            };
+        const user = document.getElementById('login-user').value.trim();
+        const pass = document.getElementById('login-pass').value.trim();
+        
+        if (!user || !pass) {
+            alert('Usuario y contraseña son obligatorios');
+            return;
         }
-    }
-    if (!ses) {
-        alert('Credenciales incorrectas');
-        return;
-    }
-    // Guardar sesión en sessionStorage
-    sessionStorage.setItem('erp_current_user', JSON.stringify(ses));
-    currentUser = ses;
-    window.currentUser = ses;
-    document.getElementById('login-screen').classList.add('hidden');
-    await syncFromCloud(); // Asegura datos actualizados para este usuario
-    render();
-};
+
+        console.log("Iniciando sesión para:", user);
+        let ses = null;
+
+        try {
+            // 1. Intentar autenticación contra Supabase
+            const { data, error } = await _supabase.from('app_users').select('*').eq('username', user).single();
+            
+            if (!error && data && data.password === pass) {
+                console.log("Login exitoso via Supabase");
+                ses = {
+                    id: data.id,
+                    nombre: data.nombre,
+                    user: data.username,
+                    role: data.role,
+                    unidad: data.unidad, area: data.area, depto: data.depto
+                };
+            } else if (error) {
+                console.warn("Supabase Auth Error/Not found:", error.message);
+            }
+        } catch (e) {
+            console.error("Supabase Connection Fail:", e);
+        }
+
+        // 2. Fallback: buscar en datos locales (appData.users) si falló lo anterior
+        if (!ses) {
+            const localUser = appData.users.find(u => u.user === user && u.pass === pass);
+            if (localUser) {
+                console.log("Login exitoso via Local Storage");
+                ses = {
+                    id: localUser.id,
+                    nombre: localUser.nombre,
+                    user: localUser.user,
+                    role: localUser.role,
+                    unidad: localUser.unidad, area: localUser.area, depto: localUser.depto
+                };
+            }
+        }
+
+        if (!ses) {
+            alert('Credenciales incorrectas');
+            return;
+        }
+
+        // Guardar sesión en sessionStorage
+        sessionStorage.setItem('erp_current_user', JSON.stringify(ses));
+        currentUser = ses;
+        window.currentUser = ses;
+        
+        document.getElementById('login-screen').classList.add('hidden');
+        
+        // Carga inicial tras login
+        syncFromCloud().then(() => {
+            render();
+        }).catch(err => {
+            console.error("Post-login sync failed:", err);
+            render(); // Renderizar igual con datos locales
+        });
+    };
 
 document.addEventListener('DOMContentLoaded', async () => {
     if (currentUser) {
