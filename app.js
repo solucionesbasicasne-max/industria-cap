@@ -675,16 +675,45 @@ function importFromExcel(ev) {
     r.onload = (e) => {
         const b = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
         const raw = XLSX.utils.sheet_to_json(b.Sheets[b.SheetNames[0]]);
-        appData.personal = raw.map(row => ({ 
-            ficha: row.ficha || row.num || '', 
-            nombre: row.nombre || row.name || '', 
-            apPaterno: row.paterno || '', 
-            apMaterno: row.materno || '', 
-            unidad: row.unidad || '', 
-            area: row.area || '', 
-            depto: row.departamento || row.depto || ''
-        }));
+        
+        appData.personal = raw.map(row => {
+            // Normalizar las llaves de la fila (quitar espacios, acentos y pasar a minúsculas)
+            const clean = {};
+            Object.keys(row).forEach(k => {
+                const normalizedKey = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+                clean[normalizedKey] = row[k];
+            });
+
+            // Función para buscar valor por múltiples posibles nombres de columna
+            const get = (aliases) => {
+                for(let a of aliases) { if(clean[a] !== undefined) return clean[a]; }
+                return '';
+            };
+
+            // Formatear fecha de Excel (si viene como número serial)
+            let fechaAlta = get(['alta', 'fechaalta', 'ingreso', 'fecha']);
+            if(!isNaN(fechaAlta) && fechaAlta !== '') {
+                const dateObj = new Date(Math.round((Number(fechaAlta) - 25569) * 86400 * 1000));
+                fechaAlta = dateObj.toISOString().split('T')[0];
+            }
+
+            return {
+                uid: Date.now().toString() + Math.random(),
+                ficha: get(['ficha', 'num', 'id', 'numero', 'fichas']),
+                nombre: get(['nombre', 'nombres', 'name']),
+                apPaterno: get(['appaterno', 'paterno', 'apellido1', 'apellidopaterno']),
+                apMaterno: get(['apmaterno', 'materno', 'apellido2', 'apellidomaterno']),
+                alta: fechaAlta,
+                unidad: get(['unidad', 'plantel', 'sede', 'unidades']),
+                area: get(['area', 'seccion', 'areas']),
+                depto: get(['depto', 'departamento', 'areaespecifica', 'departamentos']),
+                perfilAsignado: get(['perfil', 'puesto', 'cargo', 'posicion'])
+            };
+        });
+        
         save();
+        alert(`¡Éxito! Se han importado ${appData.personal.length} registros correctamente.`);
+        render(); // Refrescar toda la interfaz
     };
     r.readAsArrayBuffer(ev.target.files[0]);
 }
