@@ -14,9 +14,11 @@ let appData = {
 };
 
 // CONFIG SUPABASE
+// CONFIG SUPABASE
 const SUPABASE_URL = 'https://amuhlvjubodoaoqdqvyj.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdWhsdmp1Ym9kb2FvcWRxdnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjg1MTIsImV4cCI6MjA5Mzg0NDUxMn0.YYEchJkcpnz-ZxJrAonqCxecNhL4UhHdHH-IdHhE-Zk';
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdWhsdmp1Ym9kb2FvcWRxdnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjg1MTIsImV4cCI6MjA5Mzg0NDUxMn0.YYEchJkcpnz-ZxJrAonqCxecNhL4UhHdHH-IdHhE-Zk';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-HTDJ_YFFd1GuQNemfGpXg_TdmXrMiD';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null;
 let saveTimeout;
@@ -37,15 +39,30 @@ async function save() {
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
         try {
+            // Sincronizar TODAS las tablas críticas
             await _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' });
+            
             await _supabase.from('personal').upsert(appData.personal.map(p => ({
                 ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
                 alta: p.alta, unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
             })), { onConflict: 'ficha' });
+
             await _supabase.from('matrices').upsert(appData.matrices, { onConflict: 'id' });
+            await _supabase.from('catalogo').upsert(appData.catalogo, { onConflict: 'id' });
+            await _supabase.from('perfiles').upsert(appData.perfiles, { onConflict: 'nombre' });
+            
+            await _supabase.from('unidades').upsert(appData.unidades, { onConflict: 'id' });
+            await _supabase.from('areas').upsert(appData.areas, { onConflict: 'id' });
+            await _supabase.from('departamentos').upsert(appData.departamentos, { onConflict: 'id' });
+            await _supabase.from('instructores').upsert(appData.instructors, { onConflict: 'id' });
+
+            await _supabase.from('app_users').upsert(appData.users.map(u => ({
+                nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
+                unidad: u.unidad, area: u.area, depto: u.depto
+            })), { onConflict: 'username' });
+
         } catch(e) { console.warn("Background Sync Delay:", e); }
         
-        // Solo renderizar si no estamos en una vista de edición activa
         if(!document.activeElement || document.activeElement.tagName !== 'INPUT') {
             render();
         }
@@ -94,10 +111,25 @@ async function syncFromCloud() {
         }
 
         const { data: mats } = await _supabase.from('matrices').select('*');
-        if(mats) appData.matrices = mats;
+        if(mats && mats.length > 0) appData.matrices = mats;
 
         const { data: cats } = await _supabase.from('catalogo').select('*');
-        if(cats) appData.catalogo = cats;
+        if(cats && cats.length > 0) appData.catalogo = cats;
+
+        const { data: perfs } = await _supabase.from('perfiles').select('*');
+        if(perfs && perfs.length > 0) appData.perfiles = perfs;
+
+        const { data: units } = await _supabase.from('unidades').select('*');
+        if(units && units.length > 0) appData.unidades = units;
+
+        const { data: areas } = await _supabase.from('areas').select('*');
+        if(areas && areas.length > 0) appData.areas = areas;
+
+        const { data: depts } = await _supabase.from('departamentos').select('*');
+        if(depts && depts.length > 0) appData.departamentos = depts;
+
+        const { data: inst } = await _supabase.from('instructores').select('*');
+        if(inst && inst.length > 0) appData.instructors = inst;
 
         render();
         console.log("Nube sincronizada con éxito.");
@@ -2323,14 +2355,6 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
     };
 
     // --- SEGURIDAD Y USUARIOS ---
-    window.handleLogin = () => {
-        const u = document.getElementById('login-user').value;
-        const p = document.getElementById('login-pass').value;
-        const user = appData.users.find(usr => usr.user === u && usr.pass === p);
-        if(user) {
-            currentUser = user;
-            sessionStorage.setItem('erp_current_user', JSON.stringify(user));
-            document.getElementById('login-screen').classList.add('hidden');
             render();
             showView('dashboard', document.querySelector('.sidebar-item'));
         } else {
@@ -2480,19 +2504,63 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
         closeUserModal();
     };
 
-    window.deleteUser = (id) => { if(confirm('¿Eliminar usuario?')) { appData.users = appData.users.filter(u => u.id !== id); save(); } };
+    window.handleLogin = async () => {
+    const user = document.getElementById('login-user').value.trim();
+    const pass = document.getElementById('login-pass').value.trim();
+    if (!user || !pass) {
+        alert('Usuario y contraseña son obligatorios');
+        return;
+    }
+    // Intentar autenticación contra Supabase
+    const { data, error } = await _supabase.from('app_users').select('*').eq('username', user).single();
+    let ses = null;
+    if (!error && data && data.password === pass) {
+        ses = {
+            id: data.id,
+            nombre: data.nombre,
+            user: data.username,
+            role: data.role,
+            unidad: data.unidad,
+            area: data.area,
+            depto: data.depto
+        };
+    } else {
+        // Fallback: buscar en datos locales (appData.users)
+        const localUser = appData.users.find(u => u.user === user && u.pass === pass);
+        if (localUser) {
+            ses = {
+                id: localUser.id,
+                nombre: localUser.nombre,
+                user: localUser.user,
+                role: localUser.role,
+                unidad: localUser.unidad,
+                area: localUser.area,
+                depto: localUser.depto
+            };
+        }
+    }
+    if (!ses) {
+        alert('Credenciales incorrectas');
+        return;
+    }
+    // Guardar sesión en sessionStorage
+    sessionStorage.setItem('erp_current_user', JSON.stringify(ses));
+    currentUser = ses;
+    window.currentUser = ses;
+    document.getElementById('login-screen').classList.add('hidden');
+    await syncFromCloud(); // Asegura datos actualizados para este usuario
+    render();
+};
 
-document.addEventListener('DOMContentLoaded', () => {
-    if(currentUser) {
+document.addEventListener('DOMContentLoaded', async () => {
+    if (currentUser) {
         document.getElementById('login-screen').classList.add('hidden');
+        await syncFromCloud(); // Carga inicial y asegura datos actualizados
         render();
-        syncFromCloud(); // Carga inicial
-        
         // Sincronización automática cada 30 segundos
         setInterval(() => {
-            if(currentUser) syncFromCloud();
+            if (currentUser) syncFromCloud();
         }, 30000);
-        
     } else {
         document.getElementById('login-screen').classList.remove('hidden');
     }
