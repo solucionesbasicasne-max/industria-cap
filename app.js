@@ -34,6 +34,9 @@ async function save() {
     
     // Sincronización Nube (Background)
     try {
+        // Guardar nombre de la organización
+        await _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' });
+
         await _supabase.from('personal').upsert(appData.personal.map(p => ({
             ficha: p.ficha,
             nombre: p.nombre,
@@ -60,13 +63,21 @@ async function save() {
     } catch(e) { console.error("Cloud Sync Error:", e); }
 
     render();
-    syncFromCloud();
 }
 
 async function syncFromCloud() {
     try {
         console.log("Sincronizando con Supabase...");
         
+        // Cargar Configuración (Nombre de Empresa)
+        const { data: config } = await _supabase.from('app_config').select('org_name').eq('id', 1).single();
+        if(config) {
+            appData.organizacion.name = config.org_name;
+            // Actualizar logo en sidebar si existe
+            const logoText = document.querySelector('.logo-text');
+            if(logoText) logoText.innerText = config.org_name;
+        }
+
         const { data: pers } = await _supabase.from('personal').select('*');
         if(pers && pers.length > 0) {
             appData.personal = pers.map(p => ({
@@ -283,31 +294,50 @@ window.deleteWorkerByUid = (uid) => {
 };
 
 function renderEstructura() {
-    const tree = document.getElementById('org-tree');
-    if(!tree) return;
-    tree.innerHTML = `
-        <div class="bg-slate-900 text-white p-8 rounded-3xl shadow-xl border border-slate-800">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Nivel 1: Organización</p>
-                    <div class="flex items-center gap-4">
-                        <h2 class="text-3xl font-black tracking-tight uppercase">${appData.organizacion.name}</h2>
-                        <button onclick="editOrgName()" class="p-1.5 text-slate-400 hover:text-white transition-all"><i data-lucide="edit-3" size="16"></i></button>
+    const cont = document.getElementById('view-estructura'); if(!cont) return;
+    cont.innerHTML = `
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-black text-slate-900 tracking-tight">Estructura Organizacional</h1>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Control jerárquico de unidades, áreas y departamentos</p>
+            </div>
+            <button onclick="openEstructuraModal('unidad')" class="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center gap-2">
+                <i data-lucide="plus" size="14"></i> + UNIDAD
+            </button>
+        </div>
+
+        <div class="bg-slate-900 rounded-[40px] p-10 shadow-2xl relative overflow-hidden border border-slate-800">
+            <div class="absolute top-0 right-0 p-8 opacity-10">
+                <i data-lucide="network" size="120" class="text-white"></i>
+            </div>
+            
+            <div class="relative z-10 space-y-12">
+                <!-- NIVEL 1: ORGANIZACIÓN -->
+                <div class="flex items-center gap-4 group">
+                    <div class="space-y-1">
+                        <span class="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">Nivel 1: Organización</span>
+                        <div class="flex items-center gap-3">
+                            <h2 id="display-org-name" class="text-4xl font-black text-white tracking-tighter uppercase">${appData.organizacion.name}</h2>
+                            ${currentUser.role === 'ADMIN' ? `<button onclick="editOrganizacion()" class="p-2 text-slate-500 hover:text-white transition-colors"><i data-lucide="edit-3" size="18"></i></button>` : ''}
+                        </div>
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="openEstructuraModal('unidad')" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-blue-100 uppercase">+ Unidad</button>
+
+                <div class="grid grid-cols-1 gap-8">
+                    ${appData.unidades.map(u => renderUnidadCard(u)).join('')}
                 </div>
             </div>
-            <div class="grid grid-cols-1 gap-6">${appData.unidades.map(u => renderUnidad(u)).join('')}</div>
         </div>
     `;
     lucide.createIcons();
 }
 
-function editOrgName() {
-    const newName = prompt("Nuevo nombre de la organización:", appData.organizacion.name);
-    if(newName) { appData.organizacion.name = newName; save(); }
+function editOrganizacion() {
+    const nuevoNombre = prompt("Ingresa el nuevo nombre de la organización:", appData.organizacion.name);
+    if(nuevoNombre && nuevoNombre.trim() !== "") {
+        appData.organizacion.name = nuevoNombre.trim();
+        save(); // Esto guardará en local y en la tabla app_config de Supabase
+    }
 }
 
 function renderUnidad(u) {
