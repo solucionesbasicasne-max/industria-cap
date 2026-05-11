@@ -43,7 +43,7 @@ async function save() {
             
             // Sincronizar TODAS las tablas críticas y capturar errores
             const results = await Promise.allSettled([
-                _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
+                // _supabase.from('app_config').upsert({ id: 1, org_name: appData.organizacion.name }, { onConflict: 'id' }),
                 _supabase.from('personal').upsert(appData.personal.map(p => {
                     let fechaSupabase = p.alta;
                     if (p.alta && p.alta.includes('/')) {
@@ -132,6 +132,7 @@ async function syncFromCloud() {
     try {
         console.log("Sincronizando con Supabase...");
         
+        /*
         // Cargar Configuración (Nombre de Empresa)
         const { data: config } = await _supabase.from('app_config').select('org_name').eq('id', 1).single();
         if(config) {
@@ -140,6 +141,7 @@ async function syncFromCloud() {
             const logoText = document.querySelector('.logo-text');
             if(logoText) logoText.innerText = config.org_name;
         }
+        */
 
         const { data: pers } = await _supabase.from('personal').select('*');
         if(pers && pers.length > 0) {
