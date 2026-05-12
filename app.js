@@ -80,7 +80,7 @@ function ensureUUID(obj) {
 const SUPABASE_URL = 'https://amuhlvjubodoaoqdqvyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdWhsdmp1Ym9kb2FvcWRxdnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjg1MTIsImV4cCI6MjA5Mzg0NDUxMn0.YYEchJkcpnz-ZxJrAonqCxecNhL4UhHdHH-IdHhE-Zk';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-HTDJ_YFFd1GuQNemfGpXg_TdmXrMiD';
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : { from: () => ({ select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: 'Supabase library not loaded' }) }), order: () => Promise.resolve({ data: [] }), insert: () => Promise.resolve({ error: 'Supabase not loaded' }), upsert: () => Promise.resolve({ error: 'Supabase not loaded' }) }) }) };
 
 let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null;
 let saveTimeout;
@@ -313,10 +313,15 @@ function render() {
     }
     
     // Actualizar UI del usuario logueado
-    document.getElementById('user-name-display').innerText = currentUser.nombre;
-    document.getElementById('user-role-display').innerText = currentUser.role === 'ADMIN' ? 'Súper Usuario' : 'Supervisor de Área';
-    document.getElementById('user-avatar').innerText = currentUser.nombre.charAt(0);
-    document.getElementById('admin-menu').classList.toggle('hidden', currentUser.role !== 'ADMIN');
+    const nameEl = document.getElementById('user-name-display');
+    const roleEl = document.getElementById('user-role-display');
+    const avatarEl = document.getElementById('user-avatar');
+    const adminMenuEl = document.getElementById('admin-menu');
+
+    if (nameEl) nameEl.innerText = currentUser.nombre;
+    if (roleEl) roleEl.innerText = currentUser.role === 'ADMIN' ? 'Súper Usuario' : 'Supervisor de Área';
+    if (avatarEl) avatarEl.innerText = currentUser.nombre.charAt(0);
+    if (adminMenuEl) adminMenuEl.classList.toggle('hidden', currentUser.role !== 'ADMIN');
     
     renderPersonal();
     renderEstructura();
@@ -1794,7 +1799,7 @@ function deleteCatalogoItem(idx) {
     };
 
     // --- DETALLE DE MATRIZ (PERSONAL VS TEMAS) ---
-    function openMatrizDetail(id) {
+    window.openMatrizDetail = (id) => {
         currentActiveMatrizId = id;
         const matriz = appData.matrices.find(m => m.id === id);
         if(!matriz) return;
@@ -1836,8 +1841,8 @@ function deleteCatalogoItem(idx) {
             const att = matriz.attendance ? (matriz.attendance[p.ficha] || {}) : {};
             selectedTopics.forEach(t => {
                 const topicAtt = att[t.codigo] || {};
-                const tDate = t.date ? new Date(t.date + 'T00:00:00') : null;
-                const isCurrentMonth = tDate && tDate.getMonth() === currentMonth;
+                const tDate = (t.date && t.date !== '') ? new Date(t.date + 'T00:00:00') : null;
+                const isCurrentMonth = (tDate && !isNaN(tDate.getTime())) ? tDate.getMonth() === currentMonth : false;
                 const duration = parseFloat(t.duration || 0);
 
                 if(topicAtt.status === 'programmed') {
@@ -1952,7 +1957,7 @@ function deleteCatalogoItem(idx) {
         lucide.createIcons();
     }
 
-    function openAddTopicsModal() {
+    window.openAddTopicsModal = () => {
         const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
         if(!matriz) return;
         
@@ -2161,7 +2166,7 @@ function deleteCatalogoItem(idx) {
     };
 
 
-    function openBulkEvidenceModal() {
+    window.openBulkEvidenceModal = () => {
         if(selectedPersonnelIds.length === 0) return alert("Seleccione al menos una persona");
         openEvidenceModal(null, null, true);
     }
@@ -2280,63 +2285,72 @@ function importCatalogoFromExcel(ev) {
     }
 
     function renderDashboard() {
-        const monthFilter = document.getElementById('dash-month-filter').value;
+        const monthEl = document.getElementById('dash-month-filter');
+        const monthFilter = monthEl ? monthEl.value : 'ALL';
         const kpis = calculateGlobalKPIs(monthFilter);
         
-        document.getElementById('dash-compliance').innerText = kpis.compliance + '%';
-        document.getElementById('dash-hours').innerText = kpis.hours;
-        document.getElementById('dash-coverage').innerText = Math.round(kpis.compliance * 0.9) + '%';
-        document.getElementById('dash-finished').innerText = kpis.finished;
+        const compEl = document.getElementById('dash-compliance');
+        const hoursEl = document.getElementById('dash-hours');
+        const coverEl = document.getElementById('dash-coverage');
+        const finEl = document.getElementById('dash-finished');
+
+        if (compEl) compEl.innerText = kpis.compliance + '%';
+        if (hoursEl) hoursEl.innerText = kpis.hours;
+        if (coverEl) coverEl.innerText = Math.round(kpis.compliance * 0.9) + '%';
+        if (finEl) finEl.innerText = kpis.finished;
 
         // --- DRILLDOWN JERÁRQUICO COMPLETO ---
         const drilldown = document.getElementById('dash-hierarchy-drilldown');
-        drilldown.innerHTML = (appData.unidades || []).map(u => {
-            const areas = appData.areas.filter(a => a.unitId === u.id);
-            return `
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center bg-slate-900 p-3 rounded-xl text-white">
-                        <span class="text-[9px] font-black uppercase tracking-widest">${u.name}</span>
-                        <i data-lucide="building-2" size="12"></i>
-                    </div>
-                    <div class="pl-4 space-y-4">
-                        ${areas.map(a => {
-                            const deptos = appData.departamentos.filter(d => d.areaId === a.id);
-                            return `
-                                <div class="space-y-2">
-                                    <div class="text-[8px] font-black text-blue-600 uppercase tracking-widest">${a.name}</div>
-                                    <div class="space-y-1.5">
-                                        ${deptos.map(d => {
-                                            const matrices = appData.matrices.filter(m => m.depto === d.name);
-                                            let dProg = 0, dDone = 0;
-                                            matrices.forEach(m => {
-                                                const mk = calculateMatrixKPIs(m);
-                                                dProg += 100; dDone += mk.compliance;
-                                            });
-                                            const dComp = matrices.length ? Math.round(dDone / matrices.length) : 0;
-                                            return `
-                                                <div class="flex items-center gap-3">
-                                                    <div class="flex-1 text-[9px] font-bold text-slate-500 uppercase truncate">${d.name}</div>
-                                                    <div class="w-32 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                                        <div class="bg-blue-600 h-full" style="width: ${dComp}%"></div>
+        if (drilldown) {
+            drilldown.innerHTML = (appData.unidades || []).map(u => {
+                const areas = appData.areas.filter(a => a.unitId === u.id);
+                return `
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center bg-slate-900 p-3 rounded-xl text-white">
+                            <span class="text-[9px] font-black uppercase tracking-widest">${u.name}</span>
+                            <i data-lucide="building-2" size="12"></i>
+                        </div>
+                        <div class="pl-4 space-y-4">
+                            ${areas.map(a => {
+                                const deptos = appData.departamentos.filter(d => d.areaId === a.id);
+                                return `
+                                    <div class="space-y-2">
+                                        <div class="text-[8px] font-black text-blue-600 uppercase tracking-widest">${a.name}</div>
+                                        <div class="space-y-1.5">
+                                            ${deptos.map(d => {
+                                                const matrices = appData.matrices.filter(m => m.depto === d.name);
+                                                let dProg = 0, dDone = 0;
+                                                matrices.forEach(m => {
+                                                    const mk = calculateMatrixKPIs(m);
+                                                    dProg += 100; dDone += mk.compliance;
+                                                });
+                                                const dComp = matrices.length ? Math.round(dDone / matrices.length) : 0;
+                                                return `
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="flex-1 text-[9px] font-bold text-slate-500 uppercase truncate">${d.name}</div>
+                                                        <div class="w-32 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                            <div class="bg-blue-600 h-full" style="width: ${dComp}%"></div>
+                                                        </div>
+                                                        <span class="text-[9px] font-black text-slate-700 w-8 text-right">${dComp}%</span>
                                                     </div>
-                                                    <span class="text-[9px] font-black text-slate-700 w-8 text-right">${dComp}%</span>
-                                                </div>
-                                            `;
-                                        }).join('')}
+                                                `;
+                                            }).join('')}
+                                        </div>
                                     </div>
-                                </div>
-                            `;
-                        }).join('')}
+                                `;
+                            }).join('')}
+                        </div>
                     </div>
-                </div>
-            `;
-        }).join('');
+                `;
+            }).join('');
+        }
 
         // --- MAPAS DE CONOCIMIENTO (Heatmaps por Categoría) ---
         const mapContainer = document.getElementById('dash-knowledge-maps');
-        const categories = [...new Set(appData.catalogo.map(c => c.categoria))];
-        
-        mapContainer.innerHTML = categories.map(cat => {
+        if (mapContainer) {
+            const categories = [...new Set(appData.catalogo.map(c => c.categoria))];
+            
+            mapContainer.innerHTML = categories.map(cat => {
             let catTotal = 0, catDone = 0, count = 0;
             appData.matrices.forEach(m => {
                 const mk = calculateMatrixKPIs(m);

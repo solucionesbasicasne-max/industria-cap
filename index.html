@@ -245,11 +245,13 @@
             </div>
 
             <div class="mb-2">
+            <div id="admin-menu">
                 <p class="px-4 text-[9px] font-black text-slate-300 uppercase tracking-widest mb-3 mt-6">Configuración Maestra</p>
                 <a href="#" onclick="showView('estructura')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 font-bold transition-all"><i data-lucide="building" size="18"></i><span class="text-[11px] uppercase tracking-tighter">Estructura Org.</span></a>
                 <a href="#" onclick="showView('perfiles')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 font-bold transition-all"><i data-lucide="award" size="18"></i><span class="text-[11px] uppercase tracking-tighter">Perfiles de Puestos</span></a>
                 <a href="#" onclick="showView('users')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 font-bold transition-all"><i data-lucide="users-2" size="18"></i><span class="text-[11px] uppercase tracking-tighter">Usuarios</span></a>
                 <a href="#" onclick="showView('settings')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-600 font-bold transition-all"><i data-lucide="settings" size="18"></i><span class="text-[11px] uppercase tracking-tighter">Branding y App</span></a>
+            </div>
             </div>
         </nav>
 
@@ -273,7 +275,14 @@
                     <h1 class="text-3xl font-black text-slate-900 tracking-tight uppercase">Dashboard Estratégico</h1>
                     <p class="text-slate-400 text-xs font-bold uppercase mt-1 tracking-widest">Planificación y Cumplimiento por Estructura</p>
                 </div>
-                <div class="flex gap-4">
+                <div class="flex gap-4 items-center">
+                    <select id="dash-month-filter" onchange="renderDashboard()" class="bg-white border border-slate-100 rounded-xl px-4 py-2 text-[10px] font-black outline-none shadow-sm">
+                        <option value="ALL">TODO EL AÑO</option>
+                        <option value="0">ENERO</option><option value="1">FEBRERO</option><option value="2">MARZO</option>
+                        <option value="3">ABRIL</option><option value="4">MAYO</option><option value="5">JUNIO</option>
+                        <option value="6">JULIO</option><option value="7">AGOSTO</option><option value="8">SEPTIEMBRE</option>
+                        <option value="9">OCTUBRE</option><option value="10">NOVIEMBRE</option><option value="11">DICIEMBRE</option>
+                    </select>
                     <button onclick="showView('matrices')" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:scale-105 transition-all flex items-center gap-3">
                         <i data-lucide="layout-grid" size="18"></i> A MATRIZ
                     </button>
@@ -326,6 +335,17 @@
                     </div>
                     <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">TEMAS TERMINADOS</p>
                     <h3 id="dash-finished" class="text-4xl font-black text-slate-900 tracking-tighter">0</h3>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <h3 class="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2"><i data-lucide="layers" class="text-blue-600"></i> Desglose por Estructura</h3>
+                    <div id="dash-hierarchy-drilldown" class="space-y-6 max-h-[500px] overflow-y-auto pr-2"></div>
+                </div>
+                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <h3 class="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2"><i data-lucide="map" class="text-emerald-600"></i> Mapas de Conocimiento</h3>
+                    <div id="dash-knowledge-maps" class="grid grid-cols-2 gap-4"></div>
                 </div>
             </div>
         </section>
@@ -394,6 +414,59 @@
                 </div>
             </div>
             <div id="matrices-hierarchy" class="space-y-8"></div>
+        </section>
+        
+        <!-- DETALLE DE MATRIZ -->
+        <section id="tab-matriz-detalle" class="tab-content p-8 hidden">
+            <div class="flex justify-between items-center mb-8 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
+                <div class="flex items-center gap-6 relative z-10">
+                    <button onclick="showView('matrices')" class="p-4 bg-slate-50 text-slate-400 rounded-2xl hover:bg-slate-900 hover:text-white transition-all shadow-sm group">
+                        <i data-lucide="arrow-left" class="group-hover:-translate-x-1 transition-transform"></i>
+                    </button>
+                    <div>
+                        <h1 id="det-matriz-name" class="text-3xl font-black text-slate-900 tracking-tight uppercase">Cargando Matriz...</h1>
+                        <p id="det-matriz-meta" class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Sincronizando datos del departamento</p>
+                    </div>
+                </div>
+                <div class="flex gap-4 relative z-10">
+                    <button onclick="openAddTopicsModal()" class="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-blue-100 hover:scale-105 transition-all flex items-center gap-2">
+                        <i data-lucide="plus-circle" size="16"></i> Gestionar Temas
+                    </button>
+                    <button id="bulk-action-btn" onclick="openBulkEvidenceModal()" class="hidden bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-emerald-100 hover:scale-105 transition-all flex items-center gap-2">
+                        <i data-lucide="check-check" size="16"></i> Cierre Masivo
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPIs de Matriz -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Cumplimiento Global</div>
+                    <div id="kpi-compliance" class="text-3xl font-black text-slate-900">0%</div>
+                </div>
+                <div class="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Cumplimiento Mes</div>
+                    <div id="kpi-compliance-month" class="text-3xl font-black text-blue-600">0%</div>
+                </div>
+                <div class="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Horas Programadas</div>
+                    <div id="kpi-hours-prog" class="text-3xl font-black text-slate-900">0.0</div>
+                </div>
+                <div class="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Horas Ejecutadas</div>
+                    <div id="kpi-hours-exec" class="text-3xl font-black text-emerald-600">0.0</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[1200px]">
+                        <thead id="det-matriz-head" class="bg-slate-50/50"></thead>
+                        <tbody id="det-matriz-body" class="divide-y divide-slate-50"></tbody>
+                    </table>
+                </div>
+            </div>
         </section>
 
         <!-- INSTRUCTORES -->
