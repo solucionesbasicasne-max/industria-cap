@@ -80,7 +80,7 @@ function ensureUUID(obj) {
 const SUPABASE_URL = 'https://amuhlvjubodoaoqdqvyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdWhsdmp1Ym9kb2FvcWRxdnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjg1MTIsImV4cCI6MjA5Mzg0NDUxMn0.YYEchJkcpnz-ZxJrAonqCxecNhL4UhHdHH-IdHhE-Zk';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-HTDJ_YFFd1GuQNemfGpXg_TdmXrMiD';
-const _supabase = (typeof supabase !== 'undefined') ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : { from: () => ({ select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: 'Supabase library not loaded' }) }), order: () => Promise.resolve({ data: [] }), insert: () => Promise.resolve({ error: 'Supabase not loaded' }), upsert: () => Promise.resolve({ error: 'Supabase not loaded' }) }) }) };
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null;
 let saveTimeout;
@@ -235,9 +235,12 @@ function initApp() {
     syncFromCloud();
     render();
     
-    // Inyectar valores actuales en el formulario de config
-    document.getElementById('conf-app-name').value = appData.organizacion.name;
-    document.getElementById('conf-app-slogan').value = appData.organizacion.slogan;
+    // Inyectar valores actuales en el formulario de config (si existe)
+    const nameInput = document.getElementById('conf-app-name');
+    const sloganInput = document.getElementById('conf-app-slogan');
+    
+    if (nameInput) nameInput.value = appData.organizacion.name;
+    if (sloganInput) sloganInput.value = appData.organizacion.slogan;
 }
 
 initApp();
