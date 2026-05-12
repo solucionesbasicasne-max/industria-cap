@@ -66,10 +66,13 @@ function isValidUUID(uuid) {
     return re.test(s);
 }
 
-// HELPER: Asegurar que un ID sea UUID o generarlo
-function ensureUUID(id) {
-    if (isValidUUID(id)) return id;
-    return crypto.randomUUID();
+// HELPER: Asegurar que un ID sea UUID o generarlo y actualizar el objeto
+function ensureUUID(obj) {
+    if (typeof obj === 'string') return isValidUUID(obj) ? obj : crypto.randomUUID();
+    if (obj && obj.id && !isValidUUID(obj.id)) {
+        obj.id = crypto.randomUUID();
+    }
+    return obj ? obj.id : crypto.randomUUID();
 }
 
 // CONFIG SUPABASE
@@ -119,19 +122,19 @@ async function saveToCloud() {
 
         // 1. UNIDADES (Prioridad)
         await syncTable('unidades', appData.unidades.map(u => ({ 
-            id: ensureUUID(u.id), 
+            id: ensureUUID(u), 
             name: u.name 
         })));
 
         // 2. ESTRUCTURA
         await syncTable('areas', appData.areas.map(a => ({
-            id: ensureUUID(a.id),
+            id: ensureUUID(a),
             unit_id: ensureUUID(a.unitId),
             name: a.name
         })));
 
         await syncTable('departamentos', appData.departamentos.map(d => ({
-            id: ensureUUID(d.id),
+            id: ensureUUID(d),
             area_id: ensureUUID(d.areaId),
             name: d.name
         })));
@@ -790,13 +793,17 @@ function openEstructuraModal(type, parentId = null, deptoName = null) {
         document.getElementById('est-person-search').oninput = (e) => renderBatchList(e.target.value);
         renderBatchList();
     } else {
-        btn.onclick = () => { 
+        btn.onclick = async () => { 
             const name = nameInput.value; 
             if(name) { 
                 if(type === 'unidad') appData.unidades.push({id: crypto.randomUUID(), name: name}); 
                 if(type === 'area') appData.areas.push({id: crypto.randomUUID(), unitId: parentId, name: name}); 
                 if(type === 'depto') appData.departamentos.push({id: crypto.randomUUID(), areaId: parentId, name: name}); 
-                save(); 
+                
+                // Forzar renderizado local inmediato antes de la red
+                render();
+                
+                await save(); 
                 closeEstructuraModal(); 
             } 
         };
@@ -807,37 +814,74 @@ function closeEstructuraModal() { document.getElementById('estructura-modal').cl
 
 function renderPerfiles() {
     const pf = document.getElementById('list-perfiles'); if(!pf) return;
-    pf.innerHTML = appData.perfiles.map((p,i)=>{
+    pf.innerHTML = appData.perfiles.map((p, i) => {
         const assignedCount = appData.personal.filter(pers => pers.perfilAsignado === p.nombre).length;
         return `
-            <tr>
-                <td>
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="p-4">
                     <div class="text-[12px] font-black text-slate-900 uppercase tracking-tight">${p.nombre}</div>
                     <div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nombre del Puesto</div>
                 </td>
-                <td>
+                <td class="p-4">
                     <div class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">${p.unidad}</div>
                     <div class="text-[9px] font-bold text-slate-400 uppercase">${p.area} > ${p.depto}</div>
                 </td>
-                <td>
+                <td class="p-4">
                     <div class="text-[10px] font-bold text-slate-600 uppercase">${p.edu || '-'}</div>
                 </td>
-                <td>
-                    <div class="flex items-center justify-center">
-                        <button onclick="showAssignedPersonnel('${p.nombre}')" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-indigo-100 uppercase">
-                            ${assignedCount} PERSONAS
-                        </button>
-                    </div>
+                <td class="p-4 text-center">
+                    <button onclick="showAssignedPersonnel('${p.nombre}')" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-indigo-100 uppercase">
+                        ${assignedCount} PERSONAS
+                    </button>
                 </td>
-                <td>
+                <td class="p-4">
                     <div class="flex items-center justify-center gap-2">
-                        <button onclick="if(confirm('¿Eliminar?')) { appData.perfiles.splice(${i},1); save(); }" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="16"></i></button>
+                        <button onclick="openEditPerfilModal('${p.id}')" class="w-9 h-9 flex items-center justify-center rounded-xl text-blue-600 hover:bg-blue-50 transition-all" title="Editar Perfil"><i data-lucide="edit-3" size="16"></i></button>
+                        <button onclick="deletePerfil('${p.id}')" class="w-9 h-9 flex items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50 transition-all" title="Eliminar Perfil"><i data-lucide="trash-2" size="16"></i></button>
                     </div>
                 </td>
             </tr>
         `;
     }).join('');
+    lucide.createIcons();
 }
+
+window.deletePerfil = (id) => {
+    if(confirm('¿Está seguro de eliminar este perfil de puesto?')) {
+        appData.perfiles = appData.perfiles.filter(p => p.id !== id);
+        save();
+    }
+};
+
+window.openEditPerfilModal = (id) => {
+    const p = appData.perfiles.find(perf => perf.id === id);
+    if(!p) return;
+    
+    openPerfilModal();
+    window.editingPerfilId = id;
+    
+    document.getElementById('p-name').value = p.nombre;
+    document.getElementById('p-edu').value = p.edu;
+    document.getElementById('p-desc').value = p.desc;
+    document.getElementById('p-funciones').value = p.funciones;
+    document.getElementById('p-autoridad').value = p.autoridad;
+    document.getElementById('p-decisiones').value = p.decisiones;
+    document.getElementById('p-relaciones').value = p.relaciones;
+    document.getElementById('p-exp').value = p.exp;
+    document.getElementById('p-idiomas').value = p.idiomas;
+    document.getElementById('p-riesgos').value = p.riesgos;
+    document.getElementById('p-condiciones').value = p.condiciones;
+    document.getElementById('p-recursos').value = p.recursos;
+    document.getElementById('p-fisico').value = p.fisico;
+    document.getElementById('p-fecha').value = p.fecha;
+    document.getElementById('p-aprobado').value = p.aprobado;
+    
+    document.getElementById('p-tech').innerHTML = p.tech || '';
+    document.getElementById('p-soft').innerHTML = p.soft || '';
+    
+    // Sincronizar selectores de ubicación si es posible
+    // (A veces los nombres no coinciden exactamente con los IDs de las tablas maestras)
+};
 
 function showAssignedPersonnel(profileName) {
     const assigned = appData.personal.filter(p => p.perfilAsignado === profileName);
@@ -888,7 +932,7 @@ function savePerfilFull() {
     const getVal = (id) => document.getElementById(id)?.value || '';
     const getHtml = (id) => document.getElementById(id)?.innerHTML || '';
     const perfil = {
-        id: crypto.randomUUID(),
+        id: window.editingPerfilId || crypto.randomUUID(),
         nombre: getVal('p-name'), edu: getVal('p-edu'),
         unidad: document.getElementById('p-unidad').options[document.getElementById('p-unidad').selectedIndex]?.text || '',
         area: document.getElementById('p-area').options[document.getElementById('p-area').selectedIndex]?.text || '',
@@ -899,9 +943,31 @@ function savePerfilFull() {
         fisico: getVal('p-fisico'), fecha: getVal('p-fecha'), aprobado: getVal('p-aprobado')
     };
     if(!perfil.nombre) return alert('Nombre de puesto obligatorio');
-    appData.perfiles.push(perfil);
+    
+    if(window.editingPerfilId) {
+        const idx = appData.perfiles.findIndex(p => p.id === window.editingPerfilId);
+        if(idx !== -1) appData.perfiles[idx] = perfil;
+    } else {
+        appData.perfiles.push(perfil);
+    }
+    
     save(); closePerfilModal();
 }
+
+window.openPerfilModal = () => { 
+    const m = document.getElementById('perfil-modal');
+    if(!m) return;
+    m.classList.remove('hidden');
+    window.editingPerfilId = null;
+    const fields = ['p-name', 'p-edu', 'p-desc', 'p-funciones', 'p-autoridad', 'p-decisiones', 'p-relaciones', 'p-exp', 'p-idiomas', 'p-riesgos', 'p-condiciones', 'p-recursos', 'p-fisico', 'p-fecha', 'p-aprobado'];
+    fields.forEach(f => { const el = document.getElementById(f); if(el) el.value = ''; });
+    document.getElementById('p-tech').innerHTML = '';
+    document.getElementById('p-soft').innerHTML = '';
+    const uSelect = document.getElementById('p-unidad');
+    uSelect.innerHTML = appData.unidades.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+    updateAreaSelect();
+    switchTab('general', document.querySelector('.tab-btn'));
+};
 
 function addTag(containerId, text = null) {
     const container = document.getElementById(containerId);
@@ -1027,11 +1093,19 @@ function switchTab(id, btn) {
     btn.classList.add('active');
 }
 
-        function toggleSubmenu(id) { document.getElementById(id).classList.toggle('hidden'); lucide.createIcons(); }
-        let currentEditCatIdx = null;
-        let currentEditFileData = null;
-        let currentActiveMatrizId = null;
-        let tempSelectedTopics = [];
+        window.toggleSubmenu = (id) => { 
+            const el = document.getElementById(id);
+            if(el) el.classList.toggle('hidden'); 
+            if(window.lucide) lucide.createIcons(); 
+        }
+        window.currentEditCatIdx = null;
+        window.currentEditFileData = null;
+        window.currentActiveMatrizId = null;
+        window.tempSelectedTopics = [];
+        window.editingUserId = null;
+        window.editingInstructorId = null;
+        window.editingPerfilId = null;
+
         const getMonthName = (dateStr) => {
             if(!dateStr) return 'SIN FECHA';
             try {
@@ -1433,7 +1507,7 @@ function savePersonalIndividual() {
     closePersonalModal();
 }
 
-function saveCatalogoItem() {
+window.saveCatalogoItem = () => {
     const code = document.getElementById('cat-code').value;
     const areaSelect = document.getElementById('cat-area').value;
     const newArea = document.getElementById('cat-new-area').value;
@@ -2317,10 +2391,8 @@ function importCatalogoFromExcel(ev) {
                 </td>
                 <td class="p-4 text-center">
                     <div class="flex justify-center gap-2">
-                        ${currentUser.role === 'ADMIN' ? `
-                            <button onclick="openInstructorModal('${ins.id}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><i data-lucide="edit-3" size="14"></i></button>
-                            <button onclick="deleteInstructor('${ins.id}')" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"><i data-lucide="trash-2" size="14"></i></button>
-                        ` : ''}
+                        <button onclick="openInstructorModal('${ins.id}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Editar Instructor"><i data-lucide="edit-3" size="14"></i></button>
+                        <button onclick="deleteInstructor('${ins.id}')" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg" title="Eliminar Instructor"><i data-lucide="trash-2" size="14"></i></button>
                     </div>
                 </td>
             </tr>

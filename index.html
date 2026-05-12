@@ -396,6 +396,31 @@
             <div id="matrices-hierarchy" class="space-y-8"></div>
         </section>
 
+        <!-- INSTRUCTORES -->
+        <section id="tab-instructores" class="tab-content p-8 hidden">
+            <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                <div>
+                    <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">Cuerpo de Instructores</h1>
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Especialistas y Facilitadores</p>
+                </div>
+                <button onclick="openInstructorModal()" class="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:bg-indigo-700 transition-all">+ Nuevo Instructor</button>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Especialidad</th>
+                            <th>Temas Vinculados</th>
+                            <th class="text-center">Materiales</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="list-instructores"></tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- CATALOGO -->
         <section id="tab-catalogo" class="tab-content p-8 space-y-6 hidden">
             <div class="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -448,6 +473,31 @@
                         <tr><th class="p-4">Nombre</th><th class="p-4">Usuario</th><th class="p-4">Rol</th><th class="p-4">Territorio</th><th class="p-4 text-center">Acciones</th></tr>
                     </thead>
                     <tbody id="list-usuarios" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PERFILES DE PUESTOS -->
+        <section id="tab-perfiles" class="tab-content p-8 hidden">
+            <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                <div>
+                    <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">Perfiles de Puestos</h1>
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Estructura de Competencias y Responsabilidades</p>
+                </div>
+                <button onclick="openPerfilModal()" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl hover:bg-blue-700 transition-all">+ Nuevo Perfil</button>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Puesto</th>
+                            <th>Ubicación</th>
+                            <th>Escolaridad</th>
+                            <th class="text-center">Personas Asignadas</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="list-perfiles"></tbody>
                 </table>
             </div>
         </section>
