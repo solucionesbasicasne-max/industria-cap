@@ -105,48 +105,97 @@ async function saveToCloud() {
         const syncTable = async (tableName, data, onConflict = 'id') => {
             if (!data || data.length === 0) return;
             const { error } = await _supabase.from(tableName).upsert(data, { onConflict });
-            if (error) console.error(`Error en ${tableName}:`, error.message);
-            else console.log(`Sincronizado: ${tableName}`);
+            if (error) {
+                console.error(`Error en ${tableName}:`, error.message);
+                // Notificación sutil en consola para el usuario si es crítico
+                if (tableName === 'app_users' || tableName === 'personal') {
+                    console.warn(`Aviso: No se pudo sincronizar la tabla ${tableName}. Verifique su conexión.`);
+                }
+            } else {
+                console.log(`Sincronizado: ${tableName}`);
+            }
         };
 
         // 1. UNIDADES (Prioridad)
         await syncTable('unidades', appData.unidades.map(u => ({ 
-            id: isValidUUID(u.id) ? u.id : undefined, 
+            id: ensureUUID(u.id), 
             name: u.name 
         })));
 
         // 2. ESTRUCTURA
         await syncTable('areas', appData.areas.map(a => ({
-            id: isValidUUID(a.id) ? a.id : undefined,
-            unit_id: isValidUUID(a.unitId) ? a.unitId : undefined,
+            id: ensureUUID(a.id),
+            unit_id: ensureUUID(a.unitId),
             name: a.name
         })));
 
         await syncTable('departamentos', appData.departamentos.map(d => ({
-            id: isValidUUID(d.id) ? d.id : undefined,
-            area_id: isValidUUID(d.areaId) ? d.areaId : undefined,
+            id: ensureUUID(d.id),
+            area_id: ensureUUID(d.areaId),
             name: d.name
         })));
 
         // 3. PERSONAL Y USUARIOS
         await syncTable('personal', appData.personal.map(p => ({
-            ficha: p.ficha, nombre: p.nombre, ap_paterno: p.apPaterno, ap_materno: p.apMaterno,
-            alta: p.alta ? p.alta.split('/').reverse().join('-') : null,
-            unidad: p.unidad, area: p.area, depto: p.depto, perfil_asignado: p.perfilAsignado
+            uid: ensureUUID(p.uid || p.ficha),
+            ficha: p.ficha, 
+            nombre: p.nombre, 
+            ap_paterno: p.apPaterno, 
+            ap_materno: p.apMaterno,
+            alta: p.alta ? (p.alta.includes('-') ? p.alta : p.alta.split('/').reverse().join('-')) : null,
+            unidad: p.unidad, 
+            area: p.area, 
+            depto: p.depto, 
+            perfil_asignado: p.perfilAsignado
         })), 'ficha');
 
         await syncTable('app_users', appData.users.map(u => ({
-            id: isValidUUID(u.id) ? u.id : undefined,
-            nombre: u.nombre, username: u.user, password: u.pass, role: u.role,
-            unidad: u.unidad, area: u.area, depto: u.depto
+            id: ensureUUID(u.id),
+            nombre: u.nombre, 
+            username: u.user, 
+            password: u.pass, 
+            role: u.role,
+            unidad: u.unidad, 
+            area: u.area, 
+            depto: u.depto
         })), 'username');
 
-        // 4. CONOCIMIENTO
+        // 4. CONOCIMIENTO Y MATRICES
         await syncTable('catalogo', appData.catalogo.map(c => ({
-            id: isValidUUID(c.id) ? c.id : undefined,
-            codigo: c.codigo, nombre: c.nombre, categoria: c.categoria,
-            area_aplica: c.areaAplica, descripcion: c.descripcion, instructor: c.instructor,
-            archivo_tipo: c.archivo, file_name: c.fileName, file_data: c.fileData
+            id: ensureUUID(c.id),
+            codigo: c.codigo, 
+            nombre: c.nombre, 
+            categoria: c.categoria,
+            area_aplica: c.areaAplica, 
+            descripcion: c.descripcion, 
+            instructor: c.instructor,
+            archivo_tipo: c.archivo, 
+            file_name: c.fileName, 
+            file_data: c.fileData
+        })));
+
+        await syncTable('matrices', appData.matrices.map(m => ({
+            id: ensureUUID(m.id),
+            name: m.name,
+            depto: m.depto,
+            category: m.category,
+            start_date: m.start,
+            end_date: m.end,
+            topics: m.topics,
+            attendance: m.attendance
+        })));
+
+        await syncTable('perfiles', appData.perfiles.map(p => ({
+            ...p,
+            id: ensureUUID(p.id)
+        })));
+
+        await syncTable('instructores', appData.instructors.map(i => ({
+            id: ensureUUID(i.id),
+            name: i.name,
+            specialty: i.specialty,
+            topics_ids: i.topicsIds,
+            files: i.files
         })));
 
     } catch(e) {
@@ -223,7 +272,15 @@ async function syncFromCloud() {
             { name: 'departamentos', setter: (data) => appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })) },
             { name: 'matrices', setter: (data) => appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })) },
             { name: 'perfiles', setter: (data) => appData.perfiles = data },
-            { name: 'instructores', setter: (data) => appData.instructors = data }
+            { name: 'instructores', setter: (data) => {
+                appData.instructors = data.map(i => ({
+                    id: i.id,
+                    name: i.name,
+                    specialty: i.specialty,
+                    topicsIds: i.topics_ids || i.topicsIds || [],
+                    files: i.files || []
+                }));
+            }}
         ];
 
         tables.forEach(t => {
@@ -266,6 +323,20 @@ function render() {
     lucide.createIcons();
 }
 
+let personalFilterType = 'ALL';
+
+window.setPersonalFilter = (type) => {
+    personalFilterType = type;
+    showView('personal');
+    renderPersonal();
+};
+
+window.filterByContratista = () => {
+    personalFilterType = 'CONTRATISTA';
+    showView('personal');
+    renderPersonal();
+};
+
 function renderPersonal() {
     const pb = document.getElementById('list-personal');
     if(!pb) return;
@@ -282,6 +353,11 @@ function renderPersonal() {
     const filtered = appData.personal.filter(p => {
         const matchesSearch = p.nombre.toLowerCase().includes(search) || (p.ficha && p.ficha.toString().includes(search));
         
+        // Filtro por tipo (Matriz vs Contratista)
+        let matchesType = true;
+        if(personalFilterType === 'MATRIZ') matchesType = (p.unidad !== 'CONTRATISTAS' && p.area !== 'CONTRATISTAS');
+        if(personalFilterType === 'CONTRATISTA') matchesType = (p.unidad === 'CONTRATISTAS' || p.area === 'CONTRATISTAS' || p.depto === 'CONTRATISTAS');
+
         // Filtro por permisos de usuario
         const canSeeUnit = currentUser.role === 'ADMIN' || currentUser.unidad === 'ALL' || p.unidad === currentUser.unidad;
         const canSeeArea = currentUser.role === 'ADMIN' || currentUser.area === 'ALL' || p.area === currentUser.area;
@@ -291,10 +367,10 @@ function renderPersonal() {
         const matchesArea = areaF === "ALL" ? canSeeArea : (p.area === areaF && canSeeArea);
         const matchesDepto = deptoF === "ALL" ? canSeeDepto : (p.depto === deptoF && canSeeDepto);
         
-        return matchesSearch && matchesUnit && matchesArea && matchesDepto;
+        return matchesSearch && matchesUnit && matchesArea && matchesDepto && matchesType;
     });
 
-    pb.innerHTML = filtered.map((p,i)=> {
+    pb.innerHTML = filtered.map((p, i) => {
         // --- FORMATEO DE FECHA EXCEL A DD/MM/AAAA ---
         let fechaAlta = p.alta || '';
         if(!isNaN(fechaAlta) && fechaAlta !== '' && !fechaAlta.toString().includes('-') && !fechaAlta.toString().includes('/')) {
@@ -309,29 +385,43 @@ function renderPersonal() {
         }
 
         return `
-            <tr class="hover:bg-slate-50 transition-colors text-[10px]">
-                <td class="p-4 text-center"><div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400"><i data-lucide="user" size="14"></i></div></td>
-                <td class="p-4 font-bold text-slate-900">${p.ficha || ''}</td>
-                <td class="p-4 font-bold uppercase">${p.nombre}</td>
-                <td class="p-4 font-bold text-slate-500 uppercase">${p.apPaterno || ''}</td>
-                <td class="p-4 font-bold text-slate-500 uppercase">${p.apMaterno || ''}</td>
-                <td class="p-4 font-black text-indigo-600">${fechaAlta}</td>
-                <td class="p-4 text-[9px] uppercase font-bold text-slate-400">${p.unidad || ''}</td>
-                <td class="p-4 text-[9px] uppercase font-bold text-slate-400">${p.area || ''}</td>
-                <td class="p-4 font-bold text-blue-600 uppercase">${p.depto || '<span class="text-slate-300 italic text-[8px]">Sin Depto</span>'}</td>
-                <td class="p-4">
-                    <div class="flex flex-col gap-1">
-                        <span class="font-black text-indigo-600 uppercase">${p.perfilAsignado || '<span class="text-slate-300 font-normal">Sin Perfil</span>'}</span>
-                        ${p.depto ? `<button onclick="openAssignProfileModalByFicha('${p.ficha}')" class="text-[8px] font-black text-blue-500 hover:underline text-left uppercase">Asignar Perfil</button>` : ''}
+            <tr>
+                <td>
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                            <i data-lucide="user" size="18"></i>
+                        </div>
+                        <div>
+                            <div class="text-[11px] font-black text-slate-900 uppercase tracking-tight">${p.ficha || 'S/F'}</div>
+                            <div class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Ficha Personal</div>
+                        </div>
                     </div>
                 </td>
-                <td class="p-4 text-center">
-                    <div class="flex items-center justify-center gap-1">
-                        <button onclick="openWorkerDetail('${p.ficha}')" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg" title="Expediente e Historial"><i data-lucide="file-text" size="14"></i></button>
-                        <button onclick="openLearningMap('${p.ficha}')" class="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg" title="Mapa de Competitividad"><i data-lucide="line-chart" size="14"></i></button>
-                        ${currentUser.role === 'ADMIN' ? `<button onclick="openUserModalFromWorker('${p.ficha}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Crear Cuenta de Usuario"><i data-lucide="key" size="14"></i></button>` : ''}
-                        ${currentUser.role === 'ADMIN' ? `<button onclick="openEditPersonalModal('${p.ficha}')" class="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg" title="Editar Datos"><i data-lucide="edit-3" size="14"></i></button>` : ''}
-                        ${currentUser.role === 'ADMIN' ? `<button onclick="deleteWorkerByUid('${p.uid || p.ficha}')" class="p-1 text-slate-400 hover:text-rose-600" title="Eliminar este registro específico"><i data-lucide="trash-2" size="14"></i></button>` : ''}
+                <td>
+                    <div class="text-[12px] font-black text-slate-800 uppercase tracking-tight">${p.nombre} ${p.apPaterno || ''} ${p.apMaterno || ''}</div>
+                </td>
+                <td>
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="calendar" size="14" class="text-blue-500"></i>
+                        <span class="text-[11px] font-black text-slate-600">${fechaAlta}</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="space-y-1">
+                        <div class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">${p.depto || 'SIN DEPARTAMENTO'}</div>
+                        <div class="text-[9px] font-bold text-slate-400 uppercase">${p.unidad || '-'} / ${p.area || '-'}</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="openWorkerDetail('${p.ficha}')" class="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-blue-100 font-black text-[9px] uppercase" title="Expediente">
+                            <i data-lucide="eye" size="14"></i> Vista Previa
+                        </button>
+                        <button onclick="openLearningMap('${p.ficha}')" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100" title="Mapa Competitividad"><i data-lucide="line-chart" size="16"></i></button>
+                        ${currentUser.role === 'ADMIN' ? `
+                            <button onclick="openEditPersonalModal('${p.ficha}')" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-all border border-slate-100" title="Editar"><i data-lucide="edit-3" size="16"></i></button>
+                            <button onclick="deleteWorkerByUid('${p.uid || p.ficha}')" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all border border-slate-100" title="Eliminar"><i data-lucide="trash-2" size="16"></i></button>
+                        ` : ''}
                     </div>
                 </td>
             </tr>
@@ -422,24 +512,27 @@ function renderEstructura() {
     const tree = document.getElementById('org-tree');
     if(!tree) return;
     tree.innerHTML = `
-        <div class="bg-slate-900 rounded-[40px] p-10 shadow-2xl relative overflow-hidden border border-slate-800">
-            <div class="absolute top-0 right-0 p-8 opacity-10">
-                <i data-lucide="network" size="120" class="text-white"></i>
+        <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden border border-slate-700">
+            <div class="absolute top-0 right-0 p-12 opacity-10">
+                <i data-lucide="network" size="160" class="text-white"></i>
             </div>
             
-            <div class="relative z-10 space-y-12">
+            <div class="relative z-10 space-y-16">
                 <!-- NIVEL 1: ORGANIZACIÓN -->
-                <div class="flex items-center gap-4 group">
+                <div class="flex items-center gap-6 group">
+                    <div class="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center text-white shadow-2xl shadow-blue-500/20">
+                        <i data-lucide="building-2" size="40"></i>
+                    </div>
                     <div class="space-y-1">
-                        <span class="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">Nivel 1: Organización</span>
-                        <div class="flex items-center gap-3">
-                            <h2 id="display-org-name" class="text-4xl font-black text-white tracking-tighter uppercase">${appData.organizacion.name}</h2>
-                            ${currentUser.role === 'ADMIN' ? `<button onclick="editOrganizacion()" class="p-2 text-slate-500 hover:text-white transition-colors"><i data-lucide="edit-3" size="18"></i></button>` : ''}
+                        <span class="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">CASA MATRIZ / SEDE PRINCIPAL</span>
+                        <div class="flex items-center gap-4">
+                            <h2 id="display-org-name" class="text-5xl font-black text-white tracking-tighter uppercase leading-none">${appData.organizacion.name}</h2>
+                            ${currentUser.role === 'ADMIN' ? `<button onclick="editOrganizacion()" class="p-3 bg-white/10 text-white hover:bg-blue-600 rounded-2xl transition-all shadow-xl"><i data-lucide="edit-3" size="24"></i></button>` : ''}
                         </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-8">
+                <div class="grid grid-cols-1 gap-12">
                     ${appData.unidades.map(u => renderUnidadCard(u)).join('')}
                 </div>
             </div>
@@ -471,8 +564,8 @@ function renderUnidadCard(u) {
                         </div>
                     </div>
                 </div>
-                <button onclick="openEstructuraModal('area', ${u.id})" class="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20">
-                    <i data-lucide="plus" size="16"></i>
+                <button onclick="openEstructuraModal('area', ${u.id})" class="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20 font-black text-[10px] uppercase">
+                    <i data-lucide="plus" size="14"></i> Añadir Área
                 </button>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -516,9 +609,9 @@ function renderArea(a) {
                         ` : ''}
                     </div>
                 </div>
-                <div class="flex gap-1">
-                    <button onclick="toggleArea(${a.id})" class="p-1 text-slate-300 hover:text-blue-600"><i data-lucide="${isCollapsed ? 'maximize-2' : 'minimize-2'}" size="12"></i></button>
-                    <button onclick="openEstructuraModal('depto', ${a.id})" class="p-1 text-blue-600 rounded hover:bg-blue-50"><i data-lucide="plus-circle" size="12"></i></button>
+                <div class="flex gap-2">
+                    <button onclick="toggleArea(${a.id})" class="p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-all"><i data-lucide="${isCollapsed ? 'maximize-2' : 'minimize-2'}" size="14"></i></button>
+                    <button onclick="openEstructuraModal('depto', ${a.id})" class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all font-black text-[9px] uppercase"><i data-lucide="plus" size="12"></i> Depto</button>
                 </div>
             </div>
             <div class="space-y-3 ${isCollapsed ? 'hidden' : ''}">${deptos.map(d => renderDepto(d)).join('')}</div>
@@ -540,10 +633,10 @@ function renderDepto(d) {
                 ` : ''}
             </div>
             <div class="flex gap-2">
-                <div onclick="showNodeDetails('personal_list', '${d.name}')" class="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-[8px] font-black cursor-pointer hover:bg-blue-200 transition-all">
-                    <i data-lucide="users" size="10"></i> ${countPers} PERS
+                <div onclick="showNodeDetails('personal_list', '${d.name}')" class="flex-1 flex items-center justify-center gap-1 py-2 bg-blue-50 text-blue-700 rounded-xl text-[9px] font-black cursor-pointer hover:bg-blue-100 transition-all border border-blue-100">
+                    <i data-lucide="users" size="12"></i> ${countPers} PERS
                 </div>
-                <button onclick="openEstructuraModal('asignar_personal', null, '${d.name}')" class="px-2 py-1 text-[7px] font-black text-blue-600 border border-blue-200 rounded-md hover:bg-blue-600 hover:text-white transition-all">+ ASIGNAR</button>
+                <button onclick="openEstructuraModal('asignar_personal', null, '${d.name}')" class="px-3 py-2 text-[9px] font-black text-white bg-slate-900 rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-slate-200">+ ASIGNAR</button>
             </div>
         </div>
     `;
@@ -699,9 +792,9 @@ function openEstructuraModal(type, parentId = null, deptoName = null) {
         btn.onclick = () => { 
             const name = nameInput.value; 
             if(name) { 
-                if(type === 'unidad') appData.unidades.push({id: Date.now(), name: name}); 
-                if(type === 'area') appData.areas.push({id: Date.now(), unitId: parentId, name: name}); 
-                if(type === 'depto') appData.departamentos.push({id: Date.now(), areaId: parentId, name: name}); 
+                if(type === 'unidad') appData.unidades.push({id: crypto.randomUUID(), name: name}); 
+                if(type === 'area') appData.areas.push({id: crypto.randomUUID(), unitId: parentId, name: name}); 
+                if(type === 'depto') appData.departamentos.push({id: crypto.randomUUID(), areaId: parentId, name: name}); 
                 save(); 
                 closeEstructuraModal(); 
             } 
@@ -716,17 +809,29 @@ function renderPerfiles() {
     pf.innerHTML = appData.perfiles.map((p,i)=>{
         const assignedCount = appData.personal.filter(pers => pers.perfilAsignado === p.nombre).length;
         return `
-            <tr class="text-xs hover:bg-slate-50 transition-all">
-                <td class="p-4 font-bold text-slate-900">${p.nombre}</td>
-                <td class="p-4 text-[9px] font-black text-blue-600 uppercase">${p.unidad} > ${p.area} > ${p.depto}</td>
-                <td class="p-4 font-medium text-slate-500">${p.edu || '-'}</td>
-                <td class="p-4 text-center">
-                    <button onclick="showAssignedPersonnel('${p.nombre}')" class="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full font-black text-[10px] hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                        ${assignedCount} PERSONAS
-                    </button>
+            <tr>
+                <td>
+                    <div class="text-[12px] font-black text-slate-900 uppercase tracking-tight">${p.nombre}</div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nombre del Puesto</div>
                 </td>
-                <td class="p-4 text-center">
-                    <button onclick="if(confirm('¿Eliminar?')) { appData.perfiles.splice(${i},1); save(); }" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"><i data-lucide="trash-2" size="14"></i></button>
+                <td>
+                    <div class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">${p.unidad}</div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase">${p.area} > ${p.depto}</div>
+                </td>
+                <td>
+                    <div class="text-[10px] font-bold text-slate-600 uppercase">${p.edu || '-'}</div>
+                </td>
+                <td>
+                    <div class="flex items-center justify-center">
+                        <button onclick="showAssignedPersonnel('${p.nombre}')" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-indigo-100 uppercase">
+                            ${assignedCount} PERSONAS
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="if(confirm('¿Eliminar?')) { appData.perfiles.splice(${i},1); save(); }" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="16"></i></button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -782,6 +887,7 @@ function savePerfilFull() {
     const getVal = (id) => document.getElementById(id)?.value || '';
     const getHtml = (id) => document.getElementById(id)?.innerHTML || '';
     const perfil = {
+        id: crypto.randomUUID(),
         nombre: getVal('p-name'), edu: getVal('p-edu'),
         unidad: document.getElementById('p-unidad').options[document.getElementById('p-unidad').selectedIndex]?.text || '',
         area: document.getElementById('p-area').options[document.getElementById('p-area').selectedIndex]?.text || '',
@@ -884,7 +990,7 @@ function importFromExcel(ev) {
             }
 
             return {
-                uid: Date.now().toString() + Math.random(),
+                uid: crypto.randomUUID(),
                 ficha: get(['ficha', 'num', 'id', 'numero', 'fichas']),
                 nombre: get(['nombre', 'nombres', 'name']),
                 apPaterno: get(['appaterno', 'paterno', 'apellido1', 'apellidopaterno']),
@@ -1099,41 +1205,42 @@ function renderCatalogo(categoryFilter = null) {
     }
 
     const getFileIcon = (type, idx) => {
-        const icons = { 'PDF': 'file-text', 'Word': 'file-type-2', 'Excel': 'file-spreadsheet', 'PowerPoint': 'presentation', 'Video': 'video' };
-        const colors = { 'PDF': 'text-rose-600', 'Word': 'text-blue-600', 'Excel': 'text-emerald-600', 'PowerPoint': 'text-orange-600', 'Video': 'text-purple-600' };
-        return `<div onclick="viewCatalogoFile(${idx})" class="flex items-center justify-center gap-2 cursor-pointer hover:scale-110 transition-transform ${colors[type] || 'text-slate-400'}">
-                    <i data-lucide="${icons[type] || 'file'}" size="16"></i>
-                    <span class="text-[10px] font-black">${type}</span>
-                </div>`;
+        const icons = { 'PDF': 'eye', 'Word': 'eye', 'Excel': 'eye', 'PowerPoint': 'eye', 'Video': 'play-circle' };
+        const colors = { 'PDF': 'bg-rose-50 text-rose-600 border-rose-100', 'Word': 'bg-blue-50 text-blue-600 border-blue-100', 'Excel': 'bg-emerald-50 text-emerald-600 border-emerald-100', 'PowerPoint': 'bg-orange-50 text-orange-600 border-orange-100', 'Video': 'bg-purple-50 text-purple-600 border-purple-100' };
+        return `
+            <button onclick="viewCatalogoFile(${idx})" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border ${colors[type] || 'bg-slate-50 text-slate-400 border-slate-100'} hover:scale-105 transition-all shadow-sm group">
+                <i data-lucide="${icons[type] || 'eye'}" size="14"></i>
+                <span class="text-[9px] font-black uppercase tracking-tighter">Vista Previa</span>
+            </button>`;
     };
 
     container.innerHTML = filtered.length ? filtered.map((item, idx) => `
-        <tr class="hover:bg-slate-50 transition-all border-b border-slate-50">
-            <td class="p-6">
+        <tr>
+            <td>
                 <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${item.codigo || 'S/C'}</div>
             </td>
-            <td class="p-6">
-                <div class="text-xs font-black text-slate-900 uppercase tracking-tight">${item.nombre}</div>
+            <td>
+                <div class="text-[12px] font-black text-slate-900 uppercase tracking-tight">${item.nombre}</div>
                 <div class="text-[9px] font-bold text-slate-400 uppercase mt-0.5">${item.descripcion || ''}</div>
             </td>
-            <td class="p-6">
+            <td>
                 <div class="flex flex-col gap-1">
                     <span class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">${item.categoria}</span>
                     <span class="text-[9px] font-bold text-slate-400 uppercase">${item.areaAplica || 'GENERAL'}</span>
                 </div>
             </td>
-            <td class="p-6">
+            <td>
                 <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500">${item.instructor ? item.instructor.charAt(0) : '?'}</div>
+                    <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-[11px] font-black text-slate-500 border border-slate-200">${item.instructor ? item.instructor.charAt(0) : '?'}</div>
                     <span class="text-[10px] font-bold text-slate-600 uppercase">${item.instructor || 'SIN ASIGNAR'}</span>
                 </div>
             </td>
-            <td class="p-6 text-center">${getFileIcon(item.archivo || 'PDF', idx)}</td>
-            <td class="p-6">
+            <td class="text-center">${getFileIcon(item.archivo || 'PDF', idx)}</td>
+            <td>
                 <div class="flex items-center justify-center gap-2">
                     ${currentUser.role === 'ADMIN' ? `
-                        <button onclick="openCatalogoModal(null, ${idx})" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all"><i data-lucide="edit-3" size="14"></i></button>
-                        <button onclick="deleteCatalogoItem(${idx})" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="14"></i></button>
+                        <button onclick="openCatalogoModal(null, ${idx})" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all"><i data-lucide="edit-3" size="16"></i></button>
+                        <button onclick="deleteCatalogoItem(${idx})" class="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="16"></i></button>
                     ` : '<span class="text-[8px] font-black text-slate-300 uppercase tracking-widest">Vista</span>'}
                 </div>
             </td>
@@ -1303,6 +1410,7 @@ function savePersonalIndividual() {
     const existingIdx = appData.personal.findIndex(p => p.ficha == ficha);
     
     const newPerson = {
+        uid: existingIdx !== -1 ? appData.personal[existingIdx].uid : crypto.randomUUID(),
         ficha: ficha,
         nombre: name,
         apPaterno: document.getElementById('new-p-paterno').value,
@@ -1520,7 +1628,7 @@ function deleteCatalogoItem(idx) {
 
     function saveMatriz() {
         const matriz = {
-            id: 'MAT-' + Date.now(),
+            id: crypto.randomUUID(),
             depto: document.getElementById('matriz-depto').value,
             name: document.getElementById('matriz-name').value,
             start: document.getElementById('matriz-start').value,
@@ -1598,7 +1706,7 @@ function deleteCatalogoItem(idx) {
         const name = document.getElementById('new-depto-name').value;
         if(!name) return alert("Nombre obligatorio");
         const id = crypto.randomUUID();
-        appData.departamentos.push({ id, areaId: currentActiveAreaId, name });
+        appData.departamentos.push({ id: crypto.randomUUID(), areaId: currentActiveAreaId, name });
         renderEstructura();
         closeDeptoModal();
         save();
@@ -1680,33 +1788,35 @@ function deleteCatalogoItem(idx) {
         // Header
         head.innerHTML = `
             <tr>
-                <th class="p-4 text-left border-r border-slate-100 min-w-[240px] sticky-header">
-                    <div class="flex items-center gap-3">
-                        <input type="checkbox" onchange="toggleSelectAllPersonnel(this)" class="w-4 h-4 rounded border-slate-300">
-                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Personal del Área</div>
+                <th class="p-6 text-left border-r border-slate-100 min-w-[280px] sticky-header bg-slate-50/50">
+                    <div class="flex items-center gap-4">
+                        <input type="checkbox" onchange="toggleSelectAllPersonnel(this)" class="w-5 h-5 rounded-lg border-slate-300 text-blue-600">
+                        <div class="flex flex-col">
+                            <span class="text-[11px] font-black text-slate-900 uppercase tracking-tight">Personal del Área</span>
+                            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Nombre y Ficha</span>
+                        </div>
                     </div>
                 </th>
                 ${selectedTopics.map((t, idx) => `
-                    <th class="p-4 text-center border-r border-slate-100 min-w-[180px] bg-white">
-                        <div class="mb-3 space-y-2">
-                            <div id="month-label-${idx}" class="text-[9px] font-black text-blue-500 mb-1 h-3">${getMonthName(t.date)}</div>
-                            <div class="flex flex-col gap-1">
-                                <label class="text-[8px] font-black text-slate-400 uppercase text-left">Programación</label>
+                    <th class="p-6 text-center border-r border-slate-100 min-w-[200px] bg-white">
+                        <div class="mb-4 space-y-3">
+                            <div id="month-label-${idx}" class="text-[10px] font-black text-blue-600 bg-blue-50 py-1 rounded-full uppercase tracking-widest">${getMonthName(t.date)}</div>
+                            <div class="grid grid-cols-1 gap-2">
                                 <input type="date" value="${t.date || ''}" 
                                     oninput="updateTopicSchedule('${idx}', 'date', this.value); updateMonthLabel(this, '${idx}')" 
-                                    class="header-input w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:border-blue-500">
-                            </div>
-                            <div class="flex flex-col gap-1">
-                                <label class="text-[8px] font-black text-slate-400 uppercase text-left">Duración (Hrs)</label>
-                                <input type="text" value="${t.duration || ''}" 
-                                    oninput="updateTopicSchedule('${idx}', 'duration', this.value)" 
-                                    placeholder="ej. 2 hrs" 
-                                    class="header-input w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none focus:border-blue-500">
+                                    class="header-input w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-[10px] font-black outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
+                                <div class="relative">
+                                    <input type="text" value="${t.duration || ''}" 
+                                        oninput="updateTopicSchedule('${idx}', 'duration', this.value)" 
+                                        placeholder="0.0 hrs" 
+                                        class="header-input w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-[10px] font-black outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-center">
+                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black text-slate-300 uppercase">HRS</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="h-px bg-slate-100 w-full mb-3"></div>
-                        <div class="text-[9px] font-black text-blue-600 uppercase leading-tight mb-1">${t.nombre}</div>
-                        <div class="text-[8px] font-bold text-slate-300">${t.codigo}</div>
+                        <div class="h-px bg-slate-100 w-full mb-4"></div>
+                        <div class="text-[11px] font-black text-slate-900 uppercase leading-none mb-1">${t.nombre}</div>
+                        <div class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">${t.codigo}</div>
                     </th>
                 `).join('')}
             </tr>
@@ -1718,36 +1828,37 @@ function deleteCatalogoItem(idx) {
             const isSelected = selectedPersonnelIds.includes(p.ficha.toString());
             
             return `
-            <tr class="hover:bg-slate-50 transition-all ${isSelected ? 'bg-blue-50/30' : ''}">
-                <td class="p-4 border-r border-slate-100 sticky-col">
-                    <div class="flex items-center gap-3">
-                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="togglePersonnelSelection('${p.ficha}')" class="w-4 h-4 rounded border-slate-300">
+            <tr class="hover:bg-slate-50 transition-all ${isSelected ? 'bg-blue-50/50' : ''}">
+                <td class="p-6 border-r border-slate-100 sticky-col bg-white/80 backdrop-blur-sm">
+                    <div class="flex items-center gap-4">
+                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="togglePersonnelSelection('${p.ficha}')" class="w-5 h-5 rounded-lg border-slate-300 text-blue-600">
                         <div>
-                            <div class="text-[10px] font-black text-slate-800 uppercase">${p.nombre} ${p.apPaterno}</div>
-                            <div class="text-[8px] text-slate-400 font-bold uppercase tracking-widest">FICHA: ${p.ficha}</div>
+                            <div class="text-[11px] font-black text-slate-900 uppercase tracking-tight">${p.nombre} ${p.apPaterno}</div>
+                            <div class="text-[9px] text-blue-600 font-black uppercase tracking-widest">FICHA: ${p.ficha}</div>
                         </div>
                     </div>
                 </td>
                 ${selectedTopics.map(t => {
                     const att = personAttendance[t.codigo] || { status: null };
                     const status = att.status || null;
-                    let bgColor = 'bg-white border-slate-100 text-transparent';
+                    let dotColor = 'bg-slate-200';
+                    let boxStyle = 'bg-white border-slate-100 text-transparent opacity-10';
                     
-                    if(status === 'programmed') bgColor = 'bg-amber-400 border-amber-400 text-white';
-                    if(status === 'not_apply') bgColor = 'bg-rose-500 border-rose-500 text-white';
-                    if(status === 'finished') bgColor = 'bg-emerald-500 border-emerald-500 text-white';
+                    if(status === 'programmed') { dotColor = 'bg-amber-400 ring-4 ring-amber-100'; boxStyle = 'bg-amber-400 border-amber-400 text-white shadow-lg shadow-amber-200'; }
+                    if(status === 'not_apply') { dotColor = 'bg-rose-500 ring-4 ring-rose-100'; boxStyle = 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200'; }
+                    if(status === 'finished') { dotColor = 'bg-emerald-500 ring-4 ring-emerald-100'; boxStyle = 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200'; }
                     
                     return `
-                    <td class="p-4 border-r border-slate-100">
-                        <div class="flex items-center justify-center gap-2">
-                            <div class="flex flex-col gap-1">
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'programmed')" class="w-2.5 h-2.5 rounded-full bg-amber-400 cursor-pointer hover:scale-125 transition-transform shadow-sm"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'not_apply')" class="w-2.5 h-2.5 rounded-full bg-rose-500 cursor-pointer hover:scale-125 transition-transform shadow-sm"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'finished')" class="w-2.5 h-2.5 rounded-full bg-emerald-500 cursor-pointer hover:scale-125 transition-transform shadow-sm"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', null)" class="w-2.5 h-2.5 rounded-full bg-slate-200 cursor-pointer hover:scale-125 transition-transform shadow-sm"></div>
+                    <td class="p-6 border-r border-slate-50">
+                        <div class="flex items-center justify-center gap-4">
+                            <div class="flex flex-col gap-2">
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'programmed')" class="w-3 h-3 rounded-full bg-amber-400 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'programmed' ? 'ring-4 ring-amber-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'not_apply')" class="w-3 h-3 rounded-full bg-rose-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'not_apply' ? 'ring-4 ring-rose-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'finished')" class="w-3 h-3 rounded-full bg-emerald-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'finished' ? 'ring-4 ring-emerald-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', null)" class="w-3 h-3 rounded-full bg-slate-200 cursor-pointer hover:scale-150 transition-all shadow-sm"></div>
                             </div>
-                            <div class="w-10 h-10 border-2 rounded-xl flex items-center justify-center transition-all ${bgColor}">
-                                <i data-lucide="${status === 'not_apply' ? 'slash' : 'check'}" size="18"></i>
+                            <div class="w-12 h-12 border-2 rounded-2xl flex items-center justify-center transition-all duration-300 ${boxStyle}">
+                                <i data-lucide="${status === 'not_apply' ? 'slash' : 'check'}" size="20" class="${status ? 'opacity-100' : 'opacity-0'}"></i>
                             </div>
                         </div>
                     </td>
@@ -2287,7 +2398,7 @@ function importCatalogoFromExcel(ev) {
         if(!name) return alert("Nombre es obligatorio");
 
         const insData = {
-            id: window.editingInstructorId || Date.now().toString(),
+            id: window.editingInstructorId || crypto.randomUUID(),
             name,
             specialty,
             topicsIds: selectedTopics,
