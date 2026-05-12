@@ -86,20 +86,21 @@ let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null
 let saveTimeout;
 async function save() {
     // Guardado Local Inmediato para evitar pérdida de datos
-    localStorage.setItem('erp_org', JSON.stringify(appData.organizacion));
+    localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
     localStorage.setItem('erp_pers', JSON.stringify(appData.personal));
-    localStorage.setItem('erp_perf', JSON.stringify(appData.perfiles));
+    localStorage.setItem('erp_perfs', JSON.stringify(appData.perfiles));
     localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
-    localStorage.setItem('erp_mat', JSON.stringify(appData.matrices));
+    localStorage.setItem('erp_mats', JSON.stringify(appData.matrices));
     localStorage.setItem('erp_units', JSON.stringify(appData.unidades));
     localStorage.setItem('erp_areas', JSON.stringify(appData.areas));
-    localStorage.setItem('erp_deptos', JSON.stringify(appData.departamentos));
+    localStorage.setItem('erp_depts', JSON.stringify(appData.departamentos));
     localStorage.setItem('erp_users', JSON.stringify(appData.users));
-    localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
+    localStorage.setItem('erp_instructors', JSON.stringify(appData.instructors));
     
     // Persistencia en la Nube
     saveToCloud();
     render();
+    console.log("Datos actualizados en UI y sincronizando con la nube...");
 }
 
 async function saveToCloud() {
@@ -1641,9 +1642,14 @@ function deleteCatalogoItem(idx) {
         const selectedYear = yearFilter ? yearFilter.value : new Date().getFullYear().toString();
 
         const deptMatrices = appData.matrices.filter(m => {
-            const isDepto = m.depto === d.name;
-            const mYear = new Date(m.start + 'T00:00:00').getFullYear().toString();
-            return isDepto && mYear === selectedYear;
+            if (!m.start || m.depto !== d.name) return false;
+            try {
+                const mDate = new Date(m.start + 'T00:00:00');
+                if (isNaN(mDate.getTime())) return false;
+                return mDate.getFullYear().toString() === selectedYear;
+            } catch(e) { 
+                return false; 
+            }
         });
         return `
             <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:border-blue-200 transition-all">
