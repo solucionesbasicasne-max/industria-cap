@@ -96,6 +96,7 @@ async function save() {
     
     // Persistencia en la Nube
     saveToCloud();
+    render();
 }
 
 async function saveToCloud() {
@@ -559,12 +560,12 @@ function renderUnidadCard(u) {
                     <div>
                         <h3 class="text-xl font-black text-white uppercase tracking-tight">${u.name}</h3>
                         <div class="flex gap-2 mt-1">
-                            <button onclick="editNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-blue-400 transition-colors"><i data-lucide="edit-2" size="14"></i></button>
-                            <button onclick="deleteNode('unidad', ${u.id})" class="p-1 text-slate-500 hover:text-rose-500 transition-colors"><i data-lucide="trash-2" size="14"></i></button>
+                            <button onclick="editNode('unidad', '${u.id}')" class="p-1 text-slate-500 hover:text-blue-400 transition-colors"><i data-lucide="edit-2" size="14"></i></button>
+                            <button onclick="deleteNode('unidad', '${u.id}')" class="p-1 text-slate-500 hover:text-rose-500 transition-colors"><i data-lucide="trash-2" size="14"></i></button>
                         </div>
                     </div>
                 </div>
-                <button onclick="openEstructuraModal('area', ${u.id})" class="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20 font-black text-[10px] uppercase">
+                <button onclick="openEstructuraModal('area', '${u.id}')" class="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20 font-black text-[10px] uppercase">
                     <i data-lucide="plus" size="14"></i> Añadir Área
                 </button>
             </div>
@@ -603,15 +604,15 @@ function renderArea(a) {
                         <h4 class="font-black text-slate-900 text-xs">${a.name}</h4>
                         ${currentUser.role === 'ADMIN' ? `
                             <div class="flex gap-1">
-                                <button onclick="editNode('area', ${a.id})" class="p-1 text-slate-300 hover:text-blue-600 transition-colors"><i data-lucide="edit-2" size="10"></i></button>
-                                <button onclick="deleteNode('area', ${a.id})" class="p-1 text-slate-300 hover:text-rose-600 transition-colors"><i data-lucide="trash-2" size="10"></i></button>
+                                <button onclick="editNode('area', '${a.id}')" class="p-1 text-slate-300 hover:text-blue-600 transition-colors"><i data-lucide="edit-2" size="10"></i></button>
+                                <button onclick="deleteNode('area', '${a.id}')" class="p-1 text-slate-300 hover:text-rose-600 transition-colors"><i data-lucide="trash-2" size="10"></i></button>
                             </div>
                         ` : ''}
                     </div>
                 </div>
                 <div class="flex gap-2">
-                    <button onclick="toggleArea(${a.id})" class="p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-all"><i data-lucide="${isCollapsed ? 'maximize-2' : 'minimize-2'}" size="14"></i></button>
-                    <button onclick="openEstructuraModal('depto', ${a.id})" class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all font-black text-[9px] uppercase"><i data-lucide="plus" size="12"></i> Depto</button>
+                    <button onclick="toggleArea('${a.id}')" class="p-2 text-slate-400 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-all"><i data-lucide="${isCollapsed ? 'maximize-2' : 'minimize-2'}" size="14"></i></button>
+                    <button onclick="openEstructuraModal('depto', '${a.id}')" class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all font-black text-[9px] uppercase"><i data-lucide="plus" size="12"></i> Depto</button>
                 </div>
             </div>
             <div class="space-y-3 ${isCollapsed ? 'hidden' : ''}">${deptos.map(d => renderDepto(d)).join('')}</div>
@@ -627,8 +628,8 @@ function renderDepto(d) {
                 <h5 class="text-[11px] font-bold text-slate-900">${d.name}</h5>
                 ${currentUser.role === 'ADMIN' ? `
                     <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onclick="editNode('depto', ${d.id})" class="p-1 text-slate-400 hover:text-blue-600"><i data-lucide="edit-2" size="10"></i></button>
-                        <button onclick="deleteNode('depto', ${d.id})" class="p-1 text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" size="10"></i></button>
+                        <button onclick="editNode('depto', '${d.id}')" class="p-1 text-slate-400 hover:text-blue-600"><i data-lucide="edit-2" size="10"></i></button>
+                        <button onclick="deleteNode('depto', '${d.id}')" class="p-1 text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" size="10"></i></button>
                     </div>
                 ` : ''}
             </div>
