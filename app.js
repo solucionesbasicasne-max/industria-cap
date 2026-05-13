@@ -1932,16 +1932,16 @@ function deleteCatalogoItem(idx) {
                     if(status === 'finished') { dotColor = 'bg-emerald-500 ring-4 ring-emerald-100'; boxStyle = 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200'; }
                     
                     return `
-                    <td class="p-6 border-r border-slate-50">
+                    <td data-cell="${p.ficha}-${t.codigo}" class="p-6 border-r border-slate-50">
                         <div class="flex items-center justify-center gap-4">
                             <div class="flex flex-col gap-2">
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'programmed')" class="w-3 h-3 rounded-full bg-amber-400 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'programmed' ? 'ring-4 ring-amber-100 scale-110' : ''}"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'not_apply')" class="w-3 h-3 rounded-full bg-rose-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'not_apply' ? 'ring-4 ring-rose-100 scale-110' : ''}"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'finished')" class="w-3 h-3 rounded-full bg-emerald-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'finished' ? 'ring-4 ring-emerald-100 scale-110' : ''}"></div>
-                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', null)" class="w-3 h-3 rounded-full bg-slate-200 cursor-pointer hover:scale-150 transition-all shadow-sm"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'programmed')" class="att-dot w-3 h-3 rounded-full bg-amber-400 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'programmed' ? 'ring-4 ring-amber-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'not_apply')" class="att-dot w-3 h-3 rounded-full bg-rose-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'not_apply' ? 'ring-4 ring-rose-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', 'finished')" class="att-dot w-3 h-3 rounded-full bg-emerald-500 cursor-pointer hover:scale-150 transition-all shadow-sm ${status === 'finished' ? 'ring-4 ring-emerald-100 scale-110' : ''}"></div>
+                                <div onclick="setAttendanceStatus('${p.ficha}', '${t.codigo}', null)" class="att-dot w-3 h-3 rounded-full bg-slate-200 cursor-pointer hover:scale-150 transition-all shadow-sm"></div>
                             </div>
-                            <div class="w-12 h-12 border-2 rounded-2xl flex items-center justify-center transition-all duration-300 ${boxStyle}">
-                                <i data-lucide="${status === 'not_apply' ? 'slash' : 'check'}" size="20" class="${status ? 'opacity-100' : 'opacity-0'}"></i>
+                            <div class="att-box w-12 h-12 border-2 rounded-2xl flex items-center justify-center transition-all duration-300 ${boxStyle}">
+                                <i data-lucide="${status === 'not_apply' ? 'slash' : 'check'}" size="20" class="att-icon ${status ? 'opacity-100' : 'opacity-0'}"></i>
                             </div>
                         </div>
                     </td>
@@ -2075,8 +2075,7 @@ function deleteCatalogoItem(idx) {
     }
 
     window.setAttendanceStatus = (ficha, topicCode, status) => {
-        syncHeaderData();
-        const mIdx = appData.matrices.findIndex(m => m.id === currentActiveMatrizId);
+        const mIdx = appData.matrices.findIndex(m => m.id === window.currentActiveMatrizId);
         if(mIdx === -1) return;
         
         if(!appData.matrices[mIdx].attendance) appData.matrices[mIdx].attendance = {};
@@ -2087,9 +2086,48 @@ function deleteCatalogoItem(idx) {
             return;
         }
         
+        // 1. Actualizar datos en memoria (instantáneo)
         appData.matrices[mIdx].attendance[ficha][topicCode] = { status: status };
-        save();
-        renderMatrizTable(appData.matrices[mIdx]);
+        
+        // 2. Actualizar SOLO la celda afectada en el DOM (sin re-renderizar)
+        const cell = document.querySelector(`td[data-cell="${ficha}-${topicCode}"]`);
+        if (cell) {
+            // Estilos por estado
+            const styles = {
+                'programmed': { dot: 'ring-4 ring-amber-100 scale-110', box: 'bg-amber-400 border-amber-400 text-white shadow-lg shadow-amber-200', icon: 'check' },
+                'not_apply':  { dot: 'ring-4 ring-rose-100 scale-110',  box: 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200',     icon: 'slash' },
+                'finished':   { dot: 'ring-4 ring-emerald-100 scale-110', box: 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200', icon: 'check' },
+                null:         { dot: '',                                  box: 'bg-white border-slate-100 text-transparent opacity-10',                icon: 'check' }
+            };
+            const s = styles[status] || styles[null];
+            
+            // Limpiar rings de los 4 puntos
+            cell.querySelectorAll('.att-dot').forEach((dot, i) => {
+                dot.className = dot.className.replace(/ring-\d+\s+ring-\w+-\d+\s*|scale-110\s*/g, '').trim();
+                const statuses = ['programmed', 'not_apply', 'finished', null];
+                if (statuses[i] === status && status !== null) {
+                    dot.classList.add(...s.dot.split(' '));
+                }
+            });
+            
+            // Actualizar caja central
+            const box = cell.querySelector('.att-box');
+            if (box) {
+                box.className = `att-box w-12 h-12 border-2 rounded-2xl flex items-center justify-center transition-all duration-300 ${s.box}`;
+                const icon = box.querySelector('.att-icon');
+                if (icon) {
+                    icon.setAttribute('data-lucide', s.icon);
+                    icon.className = `att-icon ${status ? 'opacity-100' : 'opacity-0'}`;
+                }
+            }
+            
+            // Re-renderizar solo los iconos de esta celda
+            if (window.lucide) lucide.createIcons({ nodes: cell.querySelectorAll('[data-lucide]') });
+        }
+        
+        // 3. Guardar con debounce (no bloquea la UI)
+        clearTimeout(window._saveDebounce);
+        window._saveDebounce = setTimeout(() => save(), 500);
     };
 
     function openEvidenceModal(ficha, topicCode, bulk = false) {
