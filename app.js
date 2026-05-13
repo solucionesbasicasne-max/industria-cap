@@ -1112,7 +1112,7 @@ function switchTab(id, btn) {
             } catch(e) { return 'SIN FECHA'; }
         };
 
-        let selectedPersonnelIds = [];
+        window.selectedPersonnelIds = window.selectedPersonnelIds || [];
         let evidenceTarget = { ficha: null, topicCode: null, bulk: false };
         let currentActiveUnitId = null;
         let currentActiveAreaId = null;
@@ -1864,7 +1864,8 @@ function deleteCatalogoItem(idx) {
         document.getElementById('kpi-compliance-month').innerText = monthProgCount ? Math.round((monthDoneCount/monthProgCount)*100) + '%' : '0%';
         document.getElementById('kpi-hours-prog').innerText = totalProgHours.toFixed(1);
         document.getElementById('kpi-hours-exec').innerText = totalExecHours.toFixed(1);
-        document.getElementById('bulk-action-btn').classList.toggle('hidden', selectedPersonnelIds.length === 0);
+        const bulkBtn = document.getElementById('bulk-action-btn');
+        if (bulkBtn) bulkBtn.classList.toggle('hidden', window.selectedPersonnelIds.length === 0);
 
 
         // Header
@@ -1907,10 +1908,10 @@ function deleteCatalogoItem(idx) {
         // Body
         body.innerHTML = personnel.length ? personnel.map(p => {
             const personAttendance = matriz.attendance ? (matriz.attendance[p.ficha] || {}) : {};
-            const isSelected = selectedPersonnelIds.includes(p.ficha.toString());
+            const isSelected = window.selectedPersonnelIds.includes(p.ficha.toString());
             
             return `
-            <tr class="hover:bg-slate-50 transition-all ${isSelected ? 'bg-blue-50/50' : ''}">
+            <tr data-ficha="${p.ficha}" class="hover:bg-slate-50 transition-all ${isSelected ? 'bg-blue-50/50' : ''}">
                 <td class="p-6 border-r border-slate-100 sticky-col bg-white/80 backdrop-blur-sm">
                     <div class="flex items-center gap-4">
                         <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="togglePersonnelSelection('${p.ficha}')" class="w-5 h-5 rounded-lg border-slate-300 text-blue-600">
@@ -2097,7 +2098,7 @@ function deleteCatalogoItem(idx) {
         m.classList.remove('hidden');
         
         if(bulk) {
-            document.getElementById('ev-target-name').innerText = `${selectedPersonnelIds.length} PERSONAS SELECCIONADAS`;
+            document.getElementById('ev-target-name').innerText = `${window.selectedPersonnelIds.length} PERSONAS SELECCIONADAS`;
         } else {
             const p = appData.personal.find(pers => pers.ficha == ficha);
             document.getElementById('ev-target-name').innerText = p ? `${p.nombre} ${p.apPaterno}` : 'PERSONAL';
@@ -2119,7 +2120,7 @@ function deleteCatalogoItem(idx) {
 
     function saveEvidence() {
         syncHeaderData();
-        const mIdx = appData.matrices.findIndex(m => m.id === currentActiveMatrizId);
+        const mIdx = appData.matrices.findIndex(m => m.id === window.currentActiveMatrizId);
         if(mIdx === -1) return;
         
         const date = document.getElementById('ev-date').value;
@@ -2136,7 +2137,7 @@ function deleteCatalogoItem(idx) {
         if(evidenceTarget.bulk) {
             const topicCode = prompt("Ingrese el Código del Tema para cierre masivo:", "");
             if(!topicCode) return;
-            selectedPersonnelIds.forEach(ficha => {
+            window.selectedPersonnelIds.forEach(ficha => {
                 if(!appData.matrices[mIdx].attendance[ficha]) appData.matrices[mIdx].attendance[ficha] = {};
                 appData.matrices[mIdx].attendance[ficha][topicCode] = evidenceData;
             });
@@ -2150,28 +2151,53 @@ function deleteCatalogoItem(idx) {
     }
 
     window.togglePersonnelSelection = (ficha) => {
-        syncHeaderData();
         const fichaStr = ficha.toString();
-        if(selectedPersonnelIds.includes(fichaStr)) {
-            selectedPersonnelIds = selectedPersonnelIds.filter(f => f !== fichaStr);
+
+        // Actualizar estado en memoria (instantáneo)
+        if (window.selectedPersonnelIds.includes(fichaStr)) {
+            window.selectedPersonnelIds = window.selectedPersonnelIds.filter(f => f !== fichaStr);
         } else {
-            selectedPersonnelIds.push(fichaStr);
+            window.selectedPersonnelIds.push(fichaStr);
         }
-        const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
-        renderMatrizTable(matriz);
+
+        // Actualizar SOLO la fila afectada en el DOM (sin re-renderizar la tabla)
+        const isSelected = window.selectedPersonnelIds.includes(fichaStr);
+        const row = document.querySelector(`tr[data-ficha="${fichaStr}"]`);
+        if (row) {
+            if (isSelected) {
+                row.classList.add('bg-blue-50/50');
+            } else {
+                row.classList.remove('bg-blue-50/50');
+            }
+        }
+
+        // Actualizar visibilidad del botón de acción masiva
+        const bulkBtn = document.getElementById('bulk-action-btn');
+        if (bulkBtn) bulkBtn.classList.toggle('hidden', window.selectedPersonnelIds.length === 0);
     };
 
     window.toggleSelectAllPersonnel = (el) => {
-        syncHeaderData();
-        const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
+        const matriz = appData.matrices.find(m => m.id === window.currentActiveMatrizId);
+        if (!matriz) return;
         const personnel = appData.personal.filter(p => p.depto === matriz.depto);
-        selectedPersonnelIds = el.checked ? personnel.map(p => p.ficha.toString()) : [];
-        renderMatrizTable(matriz);
+        window.selectedPersonnelIds = el.checked ? personnel.map(p => p.ficha.toString()) : [];
+
+        // Actualizar todas las filas directamente sin re-renderizar
+        document.querySelectorAll('tr[data-ficha]').forEach(row => {
+            const ficha = row.getAttribute('data-ficha');
+            const isSelected = window.selectedPersonnelIds.includes(ficha);
+            row.classList.toggle('bg-blue-50/50', isSelected);
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = isSelected;
+        });
+
+        const bulkBtn = document.getElementById('bulk-action-btn');
+        if (bulkBtn) bulkBtn.classList.toggle('hidden', window.selectedPersonnelIds.length === 0);
     };
 
 
     window.openBulkEvidenceModal = () => {
-        if(selectedPersonnelIds.length === 0) return alert("Seleccione al menos una persona");
+        if(window.selectedPersonnelIds.length === 0) return alert("Seleccione al menos una persona");
         openEvidenceModal(null, null, true);
     }
 
