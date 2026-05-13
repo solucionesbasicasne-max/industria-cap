@@ -230,20 +230,8 @@ function saveBrandingConfig() {
     alert("¡Configuración de marca guardada con éxito!");
 }
 
-function initApp() {
-    loadBranding(); // Cargar logo y nombre primero
-    syncFromCloud();
-    render();
-    
-    // Inyectar valores actuales en el formulario de config (si existe)
-    const nameInput = document.getElementById('conf-app-name');
-    const sloganInput = document.getElementById('conf-app-slogan');
-    
-    if (nameInput) nameInput.value = appData.organizacion.name;
-    if (sloganInput) sloganInput.value = appData.organizacion.slogan;
-}
-
-initApp();
+// Cargar branding de forma inmediata (seguro fuera del DOM, solo usa localStorage)
+loadBranding();
 
 async function syncFromCloud() {
     try {
@@ -311,7 +299,8 @@ async function syncFromCloud() {
 
 function render() {
     if(!currentUser) {
-        document.getElementById('login-screen').classList.remove('hidden');
+        const loginEl = document.getElementById('login-screen');
+        if (loginEl) loginEl.classList.remove('hidden');
         return;
     }
     
@@ -326,14 +315,14 @@ function render() {
     if (avatarEl) avatarEl.innerText = currentUser.nombre.charAt(0);
     if (adminMenuEl) adminMenuEl.classList.toggle('hidden', currentUser.role !== 'ADMIN');
     
-    renderPersonal();
-    renderEstructura();
-    renderPerfiles();
-    renderCatalogo();
-    renderMatricesHierarchy();
-    renderInstructors();
-    renderUsers();
-    lucide.createIcons();
+    try { renderPersonal(); } catch(e) { console.warn('renderPersonal error:', e); }
+    try { renderEstructura(); } catch(e) { console.warn('renderEstructura error:', e); }
+    try { renderPerfiles(); } catch(e) { console.warn('renderPerfiles error:', e); }
+    try { renderCatalogo(); } catch(e) { console.warn('renderCatalogo error:', e); }
+    try { renderMatricesHierarchy(); } catch(e) { console.warn('renderMatricesHierarchy error:', e); }
+    try { renderInstructors(); } catch(e) { console.warn('renderInstructors error:', e); }
+    try { renderUsers(); } catch(e) { console.warn('renderUsers error:', e); }
+    if (window.lucide) lucide.createIcons();
 }
 
 let personalFilterType = 'ALL';
@@ -2385,8 +2374,9 @@ function importCatalogoFromExcel(ev) {
             `;
         }).join('');
 
-        lucide.createIcons();
-    }
+        if (window.lucide) lucide.createIcons();
+        } // cierre if(mapContainer)
+    } // cierre renderDashboard
 
     // --- INSTRUCTORES ---
     function renderInstructors() {
@@ -2966,25 +2956,39 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("App Iniciada - Verificando Sesión");
+
+    // Aplicar branding completo ahora que el DOM está disponible
+    applyBranding();
+
+    // Inyectar valores de configuración si los elementos existen
+    const nameInput = document.getElementById('conf-app-name');
+    const sloganInput = document.getElementById('conf-app-slogan');
+    if (nameInput) nameInput.value = appData.organizacion.name;
+    if (sloganInput) sloganInput.value = appData.organizacion.slogan || '';
     
-    // Quitar splash screen pase lo que pase tras 1.5 segundos (Solución definitiva al hang)
-    setTimeout(() => {
-        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
-    }, 1500);
+    // Quitar splash screen pase lo que pase tras 2 segundos (failsafe)
+    const splashTimeout = setTimeout(() => {
+        window.hideSplashScreen();
+    }, 2000);
 
     if (currentUser) {
+        // Hay sesión guardada: ocultar login, mostrar app, sincronizar en background
         const login = document.getElementById('login-screen');
         if (login) login.style.display = 'none';
-        
-        // Carga inicial rápida de datos locales
+
+        clearTimeout(splashTimeout);
+        window.hideSplashScreen();
         render();
-        
-        // Sincronización en segundo plano sin bloquear el UI
-        syncFromCloud().catch(e => console.warn("Sync Background Error:", e));
+
+        // Sincronización en background sin bloquear el UI
+        syncFromCloud().catch(e => console.warn('Sync Background Error:', e));
     } else {
+        // Sin sesión: mostrar pantalla de login
         const login = document.getElementById('login-screen');
         if (login) login.style.display = 'flex';
-        if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
+
+        clearTimeout(splashTimeout);
+        window.hideSplashScreen();
     }
     
     if (window.lucide) lucide.createIcons();
