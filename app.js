@@ -1806,6 +1806,72 @@ function deleteCatalogoItem(idx) {
         renderMatrizTable(matriz);
     }
 
+    // --- FUNCION DE KPIs INDEPENDIENTE (se puede llamar sin re-renderizar la tabla) ---
+    function updateKPIs(matriz, personnel, selectedTopics) {
+        if (!matriz) return;
+        
+        // Si no se pasan, recalcular
+        if (!personnel) personnel = appData.personal.filter(p => p.depto === matriz.depto);
+        if (!selectedTopics) {
+            selectedTopics = (matriz.topics || []).map(topicObj => {
+                const isObj = typeof topicObj === 'object' && topicObj !== null;
+                const code = isObj ? topicObj.code : topicObj;
+                const catalogItem = appData.catalogo.find(c => c.codigo === code);
+                if (!catalogItem) return null;
+                const normalized = isObj ? topicObj : { code: code, date: '', duration: '' };
+                return { ...catalogItem, ...normalized };
+            }).filter(Boolean);
+        }
+
+        let totalProgHours = 0;   // Horas programadas
+        let totalExecHours = 0;   // Horas ejecutadas (reales)
+        let totalProgCount = 0;   // Celdas programadas + ejecutadas (para cumplimiento)
+        let totalDoneCount = 0;   // Celdas ejecutadas
+
+        const currentMonth = new Date().getMonth();
+        let monthProgCount = 0;
+        let monthDoneCount = 0;
+
+        selectedTopics.forEach(t => {
+            const duration = parseFloat(t.duration || 0); // Horas definidas por el usuario en el header
+            const tDate = (t.date && t.date !== '') ? new Date(t.date + 'T00:00:00') : null;
+            const isCurrentMonth = (tDate && !isNaN(tDate.getTime())) ? tDate.getMonth() === currentMonth : false;
+
+            personnel.forEach(p => {
+                const att = matriz.attendance ? (matriz.attendance[p.ficha] || {}) : {};
+                const topicAtt = att[t.codigo] || {};
+
+                if (topicAtt.status === 'programmed') {
+                    // Amarillo: sumar horas del tema (duración × 1 persona)
+                    totalProgHours += duration;
+                    totalProgCount++;
+                    if (isCurrentMonth) monthProgCount++;
+                } else if (topicAtt.status === 'finished') {
+                    // Verde: las horas programadas siguen contando
+                    totalProgHours += duration;
+                    totalProgCount++;
+                    totalDoneCount++;
+                    // Horas ejecutadas = las horas REALES del modal de evidencia
+                    totalExecHours += parseFloat(topicAtt.hours || 0);
+                    if (isCurrentMonth) { monthProgCount++; monthDoneCount++; }
+                }
+                // not_apply y null: NO suman nada
+            });
+        });
+
+        const compEl = document.getElementById('kpi-compliance');
+        const monthEl = document.getElementById('kpi-compliance-month');
+        const progEl = document.getElementById('kpi-hours-prog');
+        const execEl = document.getElementById('kpi-hours-exec');
+        const bulkBtn = document.getElementById('bulk-action-btn');
+
+        if (compEl) compEl.innerText = totalProgCount ? Math.round((totalDoneCount / totalProgCount) * 100) + '%' : '0%';
+        if (monthEl) monthEl.innerText = monthProgCount ? Math.round((monthDoneCount / monthProgCount) * 100) + '%' : '0%';
+        if (progEl) progEl.innerText = totalProgHours.toFixed(1);
+        if (execEl) execEl.innerText = totalExecHours.toFixed(1);
+        if (bulkBtn) bulkBtn.classList.toggle('hidden', window.selectedPersonnelIds.length === 0);
+    }
+
     function renderMatrizTable(matriz) {
         const personnel = appData.personal.filter(p => p.depto === matriz.depto);
         const selectedTopics = (matriz.topics || []).map(topicObj => {
@@ -1822,50 +1888,8 @@ function deleteCatalogoItem(idx) {
         const head = document.getElementById('det-matriz-head');
         const body = document.getElementById('det-matriz-body');
         
-        // --- CALCULO DE KPIs REFINADOS ---
-        let totalProgCount = 0;
-        let totalDoneCount = 0;
-        let totalProgHours = 0;
-        let totalExecHours = 0;
-        
-        // KPIs Mensuales
-        const currentMonth = new Date().getMonth();
-        let monthProgCount = 0;
-        let monthDoneCount = 0;
-        
-        personnel.forEach(p => {
-            const att = matriz.attendance ? (matriz.attendance[p.ficha] || {}) : {};
-            selectedTopics.forEach(t => {
-                const topicAtt = att[t.codigo] || {};
-                const tDate = (t.date && t.date !== '') ? new Date(t.date + 'T00:00:00') : null;
-                const isCurrentMonth = (tDate && !isNaN(tDate.getTime())) ? tDate.getMonth() === currentMonth : false;
-                const duration = parseFloat(t.duration || 0);
-
-                if(topicAtt.status === 'programmed') {
-                    totalProgCount++;
-                    totalProgHours += duration;
-                    if(isCurrentMonth) monthProgCount++;
-                } else if(topicAtt.status === 'finished') {
-                    totalDoneCount++;
-                    totalExecHours += parseFloat(topicAtt.hours || 0);
-                    // Los terminados también cuentan como programados originalmente
-                    totalProgCount++;
-                    totalProgHours += duration;
-                    
-                    if(isCurrentMonth) {
-                        monthProgCount++;
-                        monthDoneCount++;
-                    }
-                }
-            });
-        });
-        
-        document.getElementById('kpi-compliance').innerText = totalProgCount ? Math.round((totalDoneCount/totalProgCount)*100) + '%' : '0%';
-        document.getElementById('kpi-compliance-month').innerText = monthProgCount ? Math.round((monthDoneCount/monthProgCount)*100) + '%' : '0%';
-        document.getElementById('kpi-hours-prog').innerText = totalProgHours.toFixed(1);
-        document.getElementById('kpi-hours-exec').innerText = totalExecHours.toFixed(1);
-        const bulkBtn = document.getElementById('bulk-action-btn');
-        if (bulkBtn) bulkBtn.classList.toggle('hidden', window.selectedPersonnelIds.length === 0);
+        // Calcular y mostrar KPIs
+        updateKPIs(matriz, personnel, selectedTopics);
 
 
         // Header
@@ -2035,7 +2059,15 @@ function deleteCatalogoItem(idx) {
         if(mIdx !== -1) {
             if(!appData.matrices[mIdx].topics[idx]) return;
             appData.matrices[mIdx].topics[idx][field] = value;
-            save(); 
+            
+            // Si cambió la duración, recalcular KPIs instantáneamente
+            if (field === 'duration') {
+                updateKPIs(appData.matrices[mIdx]);
+            }
+            
+            // Guardar con debounce
+            clearTimeout(window._saveDebounce);
+            window._saveDebounce = setTimeout(() => save(), 500);
         }
     };
 
@@ -2125,7 +2157,11 @@ function deleteCatalogoItem(idx) {
             if (window.lucide) lucide.createIcons({ nodes: cell.querySelectorAll('[data-lucide]') });
         }
         
-        // 3. Guardar con debounce (no bloquea la UI)
+        // 3. Actualizar KPIs instantáneamente
+        const matriz = appData.matrices[mIdx];
+        updateKPIs(matriz);
+        
+        // 4. Guardar con debounce (no bloquea la UI)
         clearTimeout(window._saveDebounce);
         window._saveDebounce = setTimeout(() => save(), 500);
     };
