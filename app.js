@@ -1791,8 +1791,12 @@ function deleteCatalogoItem(idx) {
     };
 
     // --- DETALLE DE MATRIZ (PERSONAL VS TEMAS) ---
+    window.currentActiveMatrizId = null;
+    window.tempSelectedTopics = [];
+    window.selectedPersonnelIds = window.selectedPersonnelIds || [];
+
     window.openMatrizDetail = (id) => {
-        currentActiveMatrizId = id;
+        window.currentActiveMatrizId = id;
         const matriz = appData.matrices.find(m => m.id === id);
         if(!matriz) return;
         
@@ -1950,26 +1954,29 @@ function deleteCatalogoItem(idx) {
     }
 
     window.openAddTopicsModal = () => {
-        const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
-        if(!matriz) return;
+        const matriz = appData.matrices.find(m => m.id === window.currentActiveMatrizId);
+        if(!matriz) { console.warn('No hay matriz activa para editar'); return; }
         
-        tempSelectedTopics = [...(matriz.topics || [])];
+        window.tempSelectedTopics = (matriz.topics || []).map(t => typeof t === 'object' ? t.code : t).filter(Boolean);
         const modal = document.getElementById('topics-modal');
+        if(!modal) return;
         modal.classList.remove('hidden');
-        document.getElementById('topics-filter-info').innerText = `Filtrando por: ${matriz.category}`;
+        const filterInfo = document.getElementById('topics-filter-info');
+        if(filterInfo) filterInfo.innerText = `Filtrando por: ${matriz.category}`;
         
         renderTopicsList(matriz.category);
     }
 
     function renderTopicsList(category, filter = '') {
         const list = document.getElementById('topics-list');
+        if(!list) return;
         const filtered = appData.catalogo.filter(t => 
             (t.categoria === category) && 
             (t.nombre.toLowerCase().includes(filter.toLowerCase()) || t.codigo.toLowerCase().includes(filter.toLowerCase()))
         );
         
         list.innerHTML = filtered.length ? filtered.map(t => {
-            const isSelected = tempSelectedTopics.includes(t.codigo);
+            const isSelected = window.tempSelectedTopics.includes(t.codigo);
             return `
                 <div onclick="toggleTopicSelection('${t.codigo}')" class="p-3 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-50 hover:border-slate-200'}">
                     <div>
@@ -1987,38 +1994,43 @@ function deleteCatalogoItem(idx) {
     }
 
     window.toggleTopicSelection = (code) => {
-        if(tempSelectedTopics.includes(code)) {
-            tempSelectedTopics = tempSelectedTopics.filter(c => c !== code);
+        if(window.tempSelectedTopics.includes(code)) {
+            window.tempSelectedTopics = window.tempSelectedTopics.filter(c => c !== code);
         } else {
-            tempSelectedTopics.push(code);
+            window.tempSelectedTopics.push(code);
         }
-        const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
-        renderTopicsList(matriz.category, document.getElementById('topic-search').value);
+        const matriz = appData.matrices.find(m => m.id === window.currentActiveMatrizId);
+        if(matriz) renderTopicsList(matriz.category, document.getElementById('topic-search')?.value || '');
     };
 
-    document.getElementById('topic-search').oninput = (e) => {
-        const matriz = appData.matrices.find(m => m.id === currentActiveMatrizId);
-        renderTopicsList(matriz.category, e.target.value);
-    };
-
-    function closeTopicsModal() { document.getElementById('topics-modal').classList.add('hidden'); }
-
-    function saveSelectedTopics() {
-        syncHeaderData();
-        const idx = appData.matrices.findIndex(m => m.id === currentActiveMatrizId);
-        if(idx !== -1) {
-            appData.matrices[idx].topics = tempSelectedTopics.map(code => {
-                const existing = appData.matrices[idx].topics?.find(t => (t.code || t) === code);
-                return typeof existing === 'object' ? existing : { code: code, date: '', duration: '' };
-            });
-            save();
-            renderMatrizTable(appData.matrices[idx]);
-            closeTopicsModal();
-        }
+    const topicSearchEl = document.getElementById('topic-search');
+    if(topicSearchEl) {
+        topicSearchEl.oninput = (e) => {
+            const matriz = appData.matrices.find(m => m.id === window.currentActiveMatrizId);
+            if(matriz) renderTopicsList(matriz.category, e.target.value);
+        };
     }
 
+    window.closeTopicsModal = () => { 
+        const m = document.getElementById('topics-modal'); 
+        if(m) m.classList.add('hidden'); 
+    };
+
+    window.saveSelectedTopics = () => {
+        const idx = appData.matrices.findIndex(m => m.id === window.currentActiveMatrizId);
+        if(idx === -1) { console.warn('No se encontró la matriz activa'); return; }
+        
+        appData.matrices[idx].topics = window.tempSelectedTopics.map(code => {
+            const existing = appData.matrices[idx].topics?.find(t => (typeof t === 'object' ? t.code : t) === code);
+            return typeof existing === 'object' ? existing : { code: code, date: '', duration: '' };
+        });
+        save();
+        renderMatrizTable(appData.matrices[idx]);
+        window.closeTopicsModal();
+    };
+
     window.updateTopicSchedule = (idx, field, value) => {
-        const mIdx = appData.matrices.findIndex(m => m.id === currentActiveMatrizId);
+        const mIdx = appData.matrices.findIndex(m => m.id === window.currentActiveMatrizId);
         if(mIdx !== -1) {
             if(!appData.matrices[mIdx].topics[idx]) return;
             appData.matrices[mIdx].topics[idx][field] = value;
@@ -2040,7 +2052,7 @@ function deleteCatalogoItem(idx) {
     };
 
     function syncHeaderData() {
-        const mIdx = appData.matrices.findIndex(m => m.id === currentActiveMatrizId);
+        const mIdx = appData.matrices.findIndex(m => m.id === window.currentActiveMatrizId);
         if(mIdx === -1) return;
         const inputs = document.querySelectorAll('.header-input');
         
