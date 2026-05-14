@@ -980,29 +980,172 @@ function addTag(containerId, text = null) {
 }
 
 function generateWithIA() {
-    const n = document.getElementById('p-name').value || "Líder de Operaciones";
-    alert('El Asesor IA está estructurando el perfil corporativo...');
+    const puestoInput = document.getElementById('p-name').value.trim();
+    if (!puestoInput) {
+        alert('⚠️ Ingresa el Nombre del Puesto antes de generar con IA.');
+        document.getElementById('p-name').focus();
+        return;
+    }
     
-    document.getElementById('p-edu').value = n.toLowerCase().includes('gerente') || n.toLowerCase().includes('lider') ? "Maestría en Administración, MBA o Ingeniería Especializada con Título Profesional." : "Licenciatura o Ingeniería (Titulado). Certificaciones técnicas afines.";
-    document.getElementById('p-desc').value = `Garantizar la excelencia operativa y la rentabilidad del área mediante la gestión estratégica de recursos, cumplimiento de normativas internacionales y el desarrollo de una cultura de alto desempeño y seguridad.`;
-    document.getElementById('p-funciones').value = `1. Definir y supervisar los KPIs críticos del área.\n2. Liderar proyectos de mejora continua y optimización de costos.\n3. Asegurar el cumplimiento de normativas de seguridad y medio ambiente.\n4. Gestionar el desarrollo de talento y planes de carrera.\n5. Administrar el presupuesto operativo asignado.`;
-    document.getElementById('p-autoridad').value = `Aprobación de gastos operativos, sanción o reconocimiento de personal directo, detención de procesos inseguros y selección de proveedores técnicos.`;
-    document.getElementById('p-decisiones').value = `Ajustes en la planificación semanal, asignación de turnos críticos, priorización de inversiones en mantenimiento y validación de estándares de calidad.`;
-    document.getElementById('p-relaciones').value = `Internas: Gerencias de Planta, RRHH, Finanzas.\nExternas: Clientes estratégicos, Auditores de Certificación e Instituciones Gubernamentales.`;
-    document.getElementById('p-exp').value = "5 a 8 años en posiciones de liderazgo en el sector industrial de alta manufactura.";
-    document.getElementById('p-idiomas').value = "Inglés Técnico/Negocios (Nivel Avanzado - Capacidad de negociación).";
+    const unidadEl = document.getElementById('p-unidad');
+    const areaEl = document.getElementById('p-area');
+    const deptoEl = document.getElementById('p-depto');
+    const unidad = unidadEl ? unidadEl.options[unidadEl.selectedIndex]?.text || '' : '';
+    const area = areaEl ? areaEl.options[areaEl.selectedIndex]?.text || '' : '';
+    const depto = deptoEl ? deptoEl.options[deptoEl.selectedIndex]?.text || '' : '';
     
-    document.getElementById('p-tech').innerHTML = ''; document.getElementById('p-soft').innerHTML = '';
-    ['Estrategia Operativa', 'Gestión de Proyectos', 'Análisis de Riesgos', 'Lean Manufacturing'].forEach(t => addTag('p-tech', t));
-    ['Pensamiento Estratégico', 'Comunicación Influyente', 'Toma de Decisiones', 'Resolución de Conflictos'].forEach(s => addTag('p-soft', s));
+    const n = puestoInput.toLowerCase();
     
-    document.getElementById('p-riesgos').value = `Estrés laboral por alta responsabilidad, exposición a ambiente de planta (EPP obligatorio) y fatiga visual/cognitiva.`;
-    document.getElementById('p-condiciones').value = `Entorno híbrido (Oficina/Planta), disponibilidad para viajar y atención a emergencias operativas fuera de horario si es crítico.`;
-    document.getElementById('p-recursos').value = `Presupuesto anual de área, flota de transporte, equipo de cómputo y herramientas de comunicación corporativa.`;
-    document.getElementById('p-fisico').value = `Capacidad de concentración prolongada y aptitud para recorridos en áreas industriales.`;
+    // --- CLASIFICACIÓN INTELIGENTE DEL PUESTO ---
+    let nivel = 'operativo';
+    if (n.includes('gerente') || n.includes('director') || n.includes('superintendente') || n.includes('jefe de planta')) nivel = 'gerencia';
+    else if (n.includes('supervisor') || n.includes('coordinador') || n.includes('jefe') || n.includes('lider') || n.includes('líder') || n.includes('encargado')) nivel = 'supervision';
+    else if (n.includes('ingeniero') || n.includes('analista') || n.includes('especialista') || n.includes('programador') || n.includes('diseñador')) nivel = 'tecnico';
+    else if (n.includes('admin') || n.includes('auxiliar') || n.includes('asistente') || n.includes('capturista') || n.includes('secretar') || n.includes('recepcion') || n.includes('analista de rh')) nivel = 'administrativo';
+    else if (n.includes('seguridad') || n.includes('medico') || n.includes('enferm') || n.includes('paramedic') || n.includes('bombero') || n.includes('rescate') || n.includes('proteccion civil') || n.includes('hse') || n.includes('ambiental')) nivel = 'seguridad';
+    else if (n.includes('mecanico') || n.includes('mecánico') || n.includes('electricista') || n.includes('soldador') || n.includes('tornero') || n.includes('plomero') || n.includes('técnico') || n.includes('tecnico') || n.includes('operador') || n.includes('chofer') || n.includes('maquinista') || n.includes('instrumentista')) nivel = 'operativo_tecnico';
+    
+    // --- PERFILES DINÁMICOS POR NIVEL ---
+    const perfiles = {
+        gerencia: {
+            edu: 'Maestría en Administración, MBA o Ingeniería Especializada. Título Profesional con cédula.',
+            desc: `Dirigir y asegurar la operación integral de ${depto || 'el área'} en ${unidad || 'la unidad operativa'}, garantizando el cumplimiento de objetivos estratégicos, la rentabilidad del negocio y el desarrollo del capital humano bajo estándares de clase mundial.`,
+            funciones: `1. Definir y ejecutar la estrategia operativa de ${depto || 'el departamento'} alineada al plan maestro de ${unidad || 'la organización'}.\n2. Supervisar el cumplimiento de KPIs de productividad, seguridad y calidad.\n3. Gestionar el presupuesto asignado y optimizar costos operativos.\n4. Liderar el desarrollo de talento, planes de carrera y sucesión.\n5. Representar al área en comités ejecutivos y auditorías corporativas.\n6. Impulsar proyectos de mejora continua y transformación digital.`,
+            autoridad: `Aprobación de presupuestos operativos, contratación y desvinculación de personal, detención de operaciones por riesgo crítico, firma de contratos con proveedores.`,
+            decisiones: `Priorización de inversiones en ${area || 'el área'}, reestructuración organizacional, validación de estándares de calidad y seguridad.`,
+            relaciones: `Internas: Dirección General, Gerencias de Planta, RRHH, Finanzas, HSE.\nExternas: Clientes corporativos, Auditores, Organismos Reguladores, Proveedores estratégicos.`,
+            exp: '8 a 12 años de experiencia progresiva, mínimo 5 en posiciones de alta dirección en el sector industrial/minero.',
+            idiomas: 'Inglés Avanzado (negociación corporativa). Deseable segundo idioma.',
+            tech: ['Planeación Estratégica', 'Gestión de P&L', 'Auditoría de Procesos', 'SAP/ERP Corporativo'],
+            soft: ['Liderazgo Transformacional', 'Negociación Ejecutiva', 'Visión de Negocio', 'Gestión del Cambio'],
+            riesgos: 'Estrés por alta responsabilidad ejecutiva, jornadas extendidas, exposición a entorno industrial (EPP obligatorio en planta).',
+            condiciones: `Oficina ejecutiva y recorridos en ${unidad || 'planta'}. Disponibilidad para viajes nacionales/internacionales y atención a emergencias críticas.`,
+            recursos: 'Presupuesto anual del área, vehículo asignado, equipo de cómputo, telefonía corporativa.',
+            fisico: 'Capacidad para recorridos industriales prolongados y concentración bajo presión.'
+        },
+        supervision: {
+            edu: 'Licenciatura o Ingeniería (Titulado). Certificaciones en gestión de equipos y seguridad industrial.',
+            desc: `Coordinar y supervisar las operaciones diarias de ${puestoInput.includes('de ') ? puestoInput.split('de ').slice(1).join('de ') : (depto || 'el área')}, asegurando el cumplimiento de programas de trabajo, la seguridad del personal y la calidad de los entregables en ${unidad || 'la unidad'}.`,
+            funciones: `1. Supervisar las actividades diarias del personal a cargo en ${depto || 'el departamento'}.\n2. Asegurar el cumplimiento de los programas de producción/mantenimiento.\n3. Realizar inspecciones de seguridad y permisos de trabajo.\n4. Elaborar reportes de turno con indicadores de desempeño.\n5. Coordinar la capacitación técnica del equipo de trabajo.\n6. Gestionar recursos materiales y herramientas del área.`,
+            autoridad: 'Asignación de tareas al personal operativo, detención de trabajos inseguros, aprobación de permisos de trabajo, solicitud de materiales y refacciones.',
+            decisiones: `Redistribución de cargas de trabajo en turno, priorización de órdenes de trabajo en ${depto || 'el área'}, escalamiento de incidencias a gerencia.`,
+            relaciones: `Internas: Gerencia de ${area || 'Área'}, Almacén, Seguridad Industrial, Recursos Humanos.\nExternas: Contratistas de servicio, Proveedores de refacciones.`,
+            exp: `3 a 6 años en puestos similares dentro de ${area || 'áreas operativas'} del sector industrial.`,
+            idiomas: 'Inglés Técnico Intermedio. Lectura de manuales y documentación técnica.',
+            tech: ['Gestión de Mantenimiento', 'Lectura de Planos', 'Normatividad STPS', 'Control de Inventarios'],
+            soft: ['Liderazgo de Equipos', 'Comunicación Efectiva', 'Resolución de Problemas', 'Trabajo Bajo Presión'],
+            riesgos: `Exposición a ambiente industrial en ${unidad || 'planta'} (ruido, polvo, temperaturas extremas). Uso obligatorio de EPP completo.`,
+            condiciones: `100% en campo/planta en ${unidad || 'la unidad operativa'}. Turnos rotativos. Disponibilidad para tiempo extra.`,
+            recursos: 'Radio de comunicación, equipo de cómputo, herramientas de medición, vehículo de área.',
+            fisico: 'Capacidad para permanecer de pie durante turnos completos, recorridos en campo y esfuerzo físico moderado.'
+        },
+        tecnico: {
+            edu: 'Licenciatura o Ingeniería en el área de especialidad. Certificaciones técnicas vigentes.',
+            desc: `Desarrollar, analizar y optimizar los procesos técnicos de ${depto || 'el departamento'} en ${area || 'el área'}, aplicando metodologías de ingeniería para mejorar la eficiencia operativa y resolver problemáticas técnicas complejas.`,
+            funciones: `1. Realizar análisis técnicos y proponer soluciones de ingeniería en ${depto || 'el área'}.\n2. Diseñar e implementar mejoras a procesos existentes.\n3. Elaborar documentación técnica, reportes e informes especializados.\n4. Participar en proyectos de innovación y optimización.\n5. Dar soporte técnico al personal operativo y de supervisión.\n6. Asegurar el cumplimiento de estándares y normativas técnicas aplicables.`,
+            autoridad: 'Validación técnica de procedimientos, aprobación de especificaciones de materiales, emisión de dictámenes técnicos.',
+            decisiones: `Selección de metodologías de análisis, priorización de mejoras técnicas en ${depto || 'el área'}, recomendaciones de inversión tecnológica.`,
+            relaciones: `Internas: Supervisores de ${area || 'Área'}, Ingeniería de Planta, Calidad, Compras.\nExternas: Fabricantes de equipos, Consultores técnicos, Laboratorios certificados.`,
+            exp: `2 a 5 años de experiencia como ${puestoInput} o puesto similar en el sector industrial.`,
+            idiomas: 'Inglés Técnico Avanzado. Capacidad de lectura y redacción de documentos técnicos.',
+            tech: ['Análisis de Datos', 'AutoCAD/Software Especializado', 'Metodologías de Mejora Continua', 'Gestión de Proyectos'],
+            soft: ['Pensamiento Analítico', 'Atención al Detalle', 'Trabajo Colaborativo', 'Innovación'],
+            riesgos: 'Fatiga visual por uso prolongado de pantallas, exposición eventual a área industrial.',
+            condiciones: `Oficina técnica y recorridos eventuales en ${unidad || 'planta'}. Horario administrativo con flexibilidad para proyectos.`,
+            recursos: 'Equipo de cómputo con software especializado, instrumentos de medición, acceso a bases de datos técnicas.',
+            fisico: 'Capacidad de concentración prolongada y aptitud para recorridos ocasionales en áreas industriales.'
+        },
+        administrativo: {
+            edu: 'Licenciatura en Administración, Contabilidad o carrera afín. Conocimientos de paquetería Office avanzada.',
+            desc: `Gestionar los procesos administrativos y documentales de ${depto || 'el departamento'} en ${area || 'el área'}, asegurando el flujo eficiente de información, el control de registros y el soporte operativo al equipo de trabajo.`,
+            funciones: `1. Administrar la documentación y archivo del ${depto || 'departamento'}.\n2. Elaborar reportes administrativos, minutas y comunicados.\n3. Coordinar la logística de reuniones, capacitaciones y eventos del área.\n4. Gestionar requisiciones de compra y control de gastos menores.\n5. Dar seguimiento a indicadores administrativos y entrega de informes.\n6. Atender y canalizar solicitudes del personal del área.`,
+            autoridad: 'Gestión de archivo y documentación, solicitud de materiales de oficina, coordinación de agendas.',
+            decisiones: 'Priorización de solicitudes administrativas, organización de logística interna, distribución de correspondencia.',
+            relaciones: `Internas: Todo el personal de ${area || 'el área'}, Recursos Humanos, Compras, Almacén.\nExternas: Proveedores de servicios administrativos, mensajería.`,
+            exp: `1 a 3 años en funciones administrativas, preferentemente en el sector industrial.`,
+            idiomas: 'Inglés Básico-Intermedio. Lectura de documentos y correos electrónicos.',
+            tech: ['Microsoft Office Avanzado', 'Sistemas ERP/SAP', 'Gestión Documental', 'Control de Archivos'],
+            soft: ['Organización', 'Proactividad', 'Servicio al Cliente Interno', 'Discreción'],
+            riesgos: 'Fatiga visual por uso de pantallas, estrés por carga administrativa en periodos pico.',
+            condiciones: `Oficina administrativa en ${unidad || 'la unidad'}. Horario estándar. Eventual apoyo en eventos del área.`,
+            recursos: 'Equipo de cómputo, impresora multifuncional, línea telefónica, papelería.',
+            fisico: 'Capacidad para permanecer sentado por periodos prolongados.'
+        },
+        seguridad: {
+            edu: 'Licenciatura en Seguridad Industrial, Ingeniería Ambiental o afín. Certificaciones DC-3 STPS vigentes.',
+            desc: `Garantizar la integridad física del personal y las instalaciones de ${unidad || 'la unidad operativa'} mediante la implementación, supervisión y mejora continua de los sistemas de gestión de seguridad, salud ocupacional y protección ambiental.`,
+            funciones: `1. Realizar inspecciones de seguridad en todas las áreas de ${unidad || 'la unidad'}.\n2. Investigar incidentes y accidentes, elaborar reportes y planes de acción correctiva.\n3. Impartir capacitaciones de seguridad obligatorias (DC-3 STPS).\n4. Supervisar el uso correcto de EPP y el cumplimiento de permisos de trabajo.\n5. Coordinar simulacros de emergencia y brigadas de respuesta.\n6. Mantener actualizados los programas de seguridad e higiene ante la STPS.`,
+            autoridad: 'Detención inmediata de trabajos inseguros, emisión de sanciones por incumplimiento de normas HSE, cierre temporal de áreas de riesgo.',
+            decisiones: `Clasificación de riesgo de actividades, priorización de inspecciones en ${area || 'las áreas'}, validación de análisis de seguridad en el trabajo (AST).`,
+            relaciones: `Internas: Todas las gerencias y supervisiones de ${unidad || 'planta'}, RRHH, Servicio Médico.\nExternas: STPS, Protección Civil, Bomberos, Aseguradoras.`,
+            exp: '3 a 6 años en seguridad industrial, salud ocupacional o protección civil en entorno minero/industrial.',
+            idiomas: 'Inglés Técnico Intermedio para lectura de normas internacionales (OSHA, ISO 45001).',
+            tech: ['Normatividad STPS/NOM', 'ISO 45001/14001', 'Investigación de Accidentes', 'Análisis de Riesgos HAZOP'],
+            soft: ['Autoridad Moral', 'Comunicación Asertiva', 'Toma de Decisiones Bajo Presión', 'Integridad'],
+            riesgos: 'Exposición directa a todos los riesgos del sitio industrial durante inspecciones y atención de emergencias.',
+            condiciones: `100% en campo en ${unidad || 'la unidad operativa'}. Turnos rotativos. Disponibilidad 24/7 para emergencias.`,
+            recursos: 'EPP especializado, radio de comunicación, equipo de medición ambiental, vehículo de emergencia.',
+            fisico: 'Excelente condición física. Capacidad de respuesta rápida en emergencias, recorridos extensivos y uso de EPP completo.'
+        },
+        operativo_tecnico: {
+            edu: 'Técnico Superior Universitario, Carrera Técnica o Bachillerato Técnico. Certificaciones DC-3 de especialidad vigentes.',
+            desc: `Ejecutar las actividades operativas y técnicas especializadas de ${puestoInput} en ${depto || 'el departamento'} de ${area || 'el área'}, cumpliendo con los estándares de calidad, seguridad y productividad establecidos por ${unidad || 'la organización'}.`,
+            funciones: `1. Ejecutar las tareas de ${puestoInput} conforme a procedimientos operativos estándar.\n2. Realizar inspecciones pre-operacionales del equipo y herramientas asignadas.\n3. Reportar anomalías, fallas o condiciones inseguras al supervisor inmediato.\n4. Mantener el orden y limpieza del área de trabajo (5S).\n5. Participar en las capacitaciones programadas y prácticas de seguridad.\n6. Llenar bitácoras de operación y registros de mantenimiento.`,
+            autoridad: 'Detención de actividades propias ante condición de riesgo inminente, uso exclusivo de herramientas y equipos asignados.',
+            decisiones: `Ejecución de actividades conforme a orden de trabajo, reporte de desviaciones, selección de herramienta adecuada para la tarea.`,
+            relaciones: `Internas: Supervisor directo de ${depto || 'Área'}, Almacén, Seguridad Industrial.\nExternas: Proveedores de refacciones (a solicitud del supervisor).`,
+            exp: `1 a 3 años de experiencia como ${puestoInput} en el sector industrial o minero.`,
+            idiomas: 'No indispensable. Deseable lectura básica de manuales técnicos en inglés.',
+            tech: ['Procedimientos Operativos', 'Lectura de Planos Básicos', 'Uso de Herramientas Especializadas', 'Normatividad de Seguridad'],
+            soft: ['Disciplina', 'Trabajo en Equipo', 'Responsabilidad', 'Adaptabilidad'],
+            riesgos: `Exposición a riesgos propios del puesto de ${puestoInput}: ruido, vibración, temperaturas extremas, trabajo en alturas o espacios confinados según aplique.`,
+            condiciones: `100% operativo en campo/taller en ${unidad || 'la unidad'}. Turnos rotativos. Uso obligatorio de EPP completo.`,
+            recursos: 'Herramientas manuales y especializadas, EPP de especialidad, radio de comunicación.',
+            fisico: 'Excelente condición física. Capacidad para esfuerzo físico intenso, trabajo en alturas, espacios confinados y condiciones climáticas adversas.'
+        },
+        operativo: {
+            edu: 'Bachillerato terminado o Carrera Técnica. Certificaciones específicas del puesto.',
+            desc: `Realizar las actividades operativas de ${puestoInput} en ${depto || 'el departamento'}, contribuyendo al cumplimiento de las metas de producción con apego a las normas de seguridad y calidad de ${unidad || 'la organización'}.`,
+            funciones: `1. Ejecutar las actividades de ${puestoInput} según instrucciones del supervisor.\n2. Operar equipos y herramientas del área de forma segura y eficiente.\n3. Cumplir con los procedimientos de seguridad y uso de EPP.\n4. Reportar incidencias, fallas de equipo o condiciones inseguras.\n5. Mantener el área de trabajo limpia y ordenada.\n6. Asistir a capacitaciones y simulacros programados.`,
+            autoridad: 'Suspensión de actividad propia ante riesgo inminente. Reporte directo de condiciones inseguras.',
+            decisiones: 'Ejecución conforme a instrucciones de trabajo, reporte de anomalías al supervisor de turno.',
+            relaciones: `Internas: Supervisor de ${depto || 'turno'}, compañeros de área, Almacén.\nExternas: Ninguna directa.`,
+            exp: `6 meses a 2 años en funciones operativas similares a ${puestoInput}.`,
+            idiomas: 'No requerido.',
+            tech: ['Operación de Equipos', 'Seguridad Industrial Básica', '5S', 'Procedimientos del Área'],
+            soft: ['Disciplina', 'Puntualidad', 'Trabajo en Equipo', 'Disposición al Aprendizaje'],
+            riesgos: `Riesgos propios del entorno operativo: ruido, polvo, temperaturas, esfuerzo físico.`,
+            condiciones: `100% operativo en ${unidad || 'planta'}. Turnos rotativos. Uso obligatorio de EPP.`,
+            recursos: 'Herramientas básicas del área, EPP estándar, radio de comunicación.',
+            fisico: 'Buena condición física general. Capacidad para esfuerzo físico y jornadas completas de pie.'
+        }
+    };
+    
+    const p = perfiles[nivel];
+    
+    alert(`✅ Asesor IA: Perfil generado para "${puestoInput}" (Nivel: ${nivel.toUpperCase()})`);
+    
+    document.getElementById('p-edu').value = p.edu;
+    document.getElementById('p-desc').value = p.desc;
+    document.getElementById('p-funciones').value = p.funciones;
+    document.getElementById('p-autoridad').value = p.autoridad;
+    document.getElementById('p-decisiones').value = p.decisiones;
+    document.getElementById('p-relaciones').value = p.relaciones;
+    document.getElementById('p-exp').value = p.exp;
+    document.getElementById('p-idiomas').value = p.idiomas;
+    
+    document.getElementById('p-tech').innerHTML = ''; 
+    document.getElementById('p-soft').innerHTML = '';
+    p.tech.forEach(t => addTag('p-tech', t));
+    p.soft.forEach(s => addTag('p-soft', s));
+    
+    document.getElementById('p-riesgos').value = p.riesgos;
+    document.getElementById('p-condiciones').value = p.condiciones;
+    document.getElementById('p-recursos').value = p.recursos;
+    document.getElementById('p-fisico').value = p.fisico;
     document.getElementById('p-fecha').value = new Date().toISOString().split('T')[0];
-    document.getElementById('p-aprobado').value = "ASESORIA-ERP-V1 / DIR-GRAL";
-    lucide.createIcons();
+    document.getElementById('p-aprobado').value = 'ASESORIA-IA-V2 / GENERADO AUTOMATICAMENTE';
+    if (window.lucide) lucide.createIcons();
 }
 
 function openPerfilModal() { 
