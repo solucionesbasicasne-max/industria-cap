@@ -468,7 +468,7 @@ function updateFilterOptions() {
 
 function openAssignProfileModal(index) {
     const person = appData.personal[index];
-    const profilesInDepto = appData.perfiles.filter(pf => pf.depto === person.depto);
+    const availableProfiles = appData.perfiles; // Mostrar TODOS los perfiles dados de alta
     const m = document.getElementById('estructura-modal');
     const title = document.getElementById('est-modal-title');
     const btn = document.getElementById('est-save-btn');
@@ -479,13 +479,13 @@ function openAssignProfileModal(index) {
     const listContainer = document.getElementById('est-person-list');
     document.getElementById('est-person-search').placeholder = "Buscar perfil...";
     const renderProfiles = (filter = '') => {
-        const filtered = profilesInDepto.filter(pf => pf.nombre.toLowerCase().includes(filter.toLowerCase()));
+        const filtered = availableProfiles.filter(pf => pf.nombre.toLowerCase().includes(filter.toLowerCase()));
         listContainer.innerHTML = filtered.length ? filtered.map(pf => `
             <div onclick="confirmProfileAssignment(${index}, '${pf.nombre}')" class="p-3 cursor-pointer hover:bg-indigo-50 border-b border-slate-50 transition-all">
                 <div class="text-[10px] font-black text-indigo-900 uppercase">${pf.nombre}</div>
-                <div class="text-[8px] text-slate-400 uppercase">${pf.unidad} > ${pf.area}</div>
+                <div class="text-[8px] text-slate-400 uppercase">${pf.unidad} > ${pf.area} > ${pf.depto}</div>
             </div>
-        `).join('') : '<p class="p-4 text-[10px] text-slate-400 text-center uppercase font-black">No hay perfiles en este departamento</p>';
+        `).join('') : '<p class="p-4 text-[10px] text-slate-400 text-center uppercase font-black">No hay perfiles disponibles</p>';
     };
     window.confirmProfileAssignment = (idx, profileName) => {
         appData.personal[idx].perfilAsignado = profileName;
