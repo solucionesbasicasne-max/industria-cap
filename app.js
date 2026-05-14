@@ -998,15 +998,32 @@ function generateWithIA() {
     
     // --- CLASIFICACIÓN INTELIGENTE DEL PUESTO ---
     let nivel = 'operativo';
-    if (n.includes('gerente') || n.includes('director') || n.includes('superintendente') || n.includes('jefe de planta')) nivel = 'gerencia';
+    if (n.includes('planeador') || n.includes('programador') || n.includes('maximo') || n.includes('máximo')) nivel = 'planeador_maximo';
+    else if (n.includes('gerente') || n.includes('director') || n.includes('superintendente') || n.includes('jefe de planta')) nivel = 'gerencia';
     else if (n.includes('supervisor') || n.includes('coordinador') || n.includes('jefe') || n.includes('lider') || n.includes('líder') || n.includes('encargado')) nivel = 'supervision';
-    else if (n.includes('ingeniero') || n.includes('analista') || n.includes('especialista') || n.includes('programador') || n.includes('diseñador')) nivel = 'tecnico';
+    else if (n.includes('ingeniero') || n.includes('analista') || n.includes('especialista') || n.includes('diseñador')) nivel = 'tecnico';
     else if (n.includes('admin') || n.includes('auxiliar') || n.includes('asistente') || n.includes('capturista') || n.includes('secretar') || n.includes('recepcion') || n.includes('analista de rh')) nivel = 'administrativo';
     else if (n.includes('seguridad') || n.includes('medico') || n.includes('enferm') || n.includes('paramedic') || n.includes('bombero') || n.includes('rescate') || n.includes('proteccion civil') || n.includes('hse') || n.includes('ambiental')) nivel = 'seguridad';
     else if (n.includes('mecanico') || n.includes('mecánico') || n.includes('electricista') || n.includes('soldador') || n.includes('tornero') || n.includes('plomero') || n.includes('técnico') || n.includes('tecnico') || n.includes('operador') || n.includes('chofer') || n.includes('maquinista') || n.includes('instrumentista')) nivel = 'operativo_tecnico';
     
     // --- PERFILES DINÁMICOS POR NIVEL ---
     const perfiles = {
+        planeador_maximo: {
+            edu: 'Ingeniería Mecánica, Industrial, Electromecánica o afín. Deseable: Certificación IBM Maximo o RCM/RCA.',
+            desc: `Garantizar la planificación, programación, control y optimización de las actividades de mantenimiento preventivo, correctivo y predictivo de equipos mineros, utilizando IBM Maximo como plataforma principal para asegurar disponibilidad operativa, confiabilidad de activos y reducción de costos.`,
+            funciones: `1. Elaborar planes de mantenimiento preventivo, predictivo y correctivo en IBM Maximo.\n2. Programar órdenes de trabajo semanales, mensuales y anuales.\n3. Coordinar ventanas de mantenimiento con operaciones mina.\n4. Configurar PMs, administrar activos, ubicaciones y jerarquías.\n5. Gestionar inventarios, refacciones críticas y backlog de mantenimiento.\n6. Analizar indicadores como MTTR, MTBF, Disponibilidad y Cumplimiento.`,
+            autoridad: `Priorización de órdenes de trabajo, asignación de recursos técnicos y materiales, reprogramación de actividades según contingencias operativas.`,
+            decisiones: `Balanceo de cargas de trabajo por especialidad, estrategias de mantenimiento basadas en criticidad, ajustes al cronograma semanal.`,
+            relaciones: `Internas: Producción/Operaciones Mina, Almacén, Supervisión de Mantenimiento.\nExternas: Proveedores de repuestos, Contratistas de servicios especializados.`,
+            exp: '3 a 5 años en mantenimiento minero. 2+ años utilizando IBM Maximo en gestión de maquinaria pesada.',
+            idiomas: 'Inglés Técnico (Lectura de manuales y especificaciones técnicas).',
+            tech: ['IBM Maximo (Activos, PMs, WO)', 'Planeación Estratégica', 'Confiabilidad Operacional', 'Power BI / Excel Avanzado'],
+            soft: ['Organización Avanzada', 'Toma de Decisiones basada en Datos', 'Resolución de Problemas', 'Trabajo bajo Presión'],
+            riesgos: 'Exposición a entorno minero y talleres. Estrés por cumplimiento de KPIs y disponibilidad de equipos.',
+            condiciones: `Trabajo en mina / campo / talleres. Turnos rotativos o administrativos según operación. Disponibilidad para emergencias.`,
+            recursos: 'IBM Maximo, Microsoft Excel avanzado, Power BI, Sistemas SCADA/monitoreo.',
+            fisico: 'Aptitud para trabajo en campo, recorridos en talleres y concentración en análisis de datos.'
+        },
         gerencia: {
             edu: 'Maestría en Administración, MBA o Ingeniería Especializada. Título Profesional con cédula.',
             desc: `Dirigir y asegurar la operación integral de ${depto || 'el área'} en ${unidad || 'la unidad operativa'}, garantizando el cumplimiento de objetivos estratégicos, la rentabilidad del negocio y el desarrollo del capital humano bajo estándares de clase mundial.`,
