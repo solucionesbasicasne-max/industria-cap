@@ -176,124 +176,133 @@ async function saveToCloud() {
             }
         };
 
-        // 1. UNIDADES (Conflict en 'name' para respetar la clave única de Supabase)
-        const uPayload = appData.unidades.map(u => ({ 
-            ...(isValidUUID(u.id) ? { id: u.id } : {}),
-            name: (u.name || '').trim() 
-        })).filter(u => u.name);
+        // 1. UNIDADES (Conflict en 'name', sin 'id' para proteger claves foráneas en Supabase)
+        try {
+            const uPayload = appData.unidades.map(u => ({ 
+                name: (u.name || '').trim() 
+            })).filter(u => u.name);
 
-        const uRes = await syncTable('unidades', uPayload, 'name');
-        if (uRes.success && uRes.data) {
-            uRes.data.forEach(dbU => {
-                const localU = appData.unidades.find(u => u.name.trim().toUpperCase() === dbU.name.trim().toUpperCase());
-                if (localU) localU.id = dbU.id;
-            });
-        }
+            const uRes = await syncTable('unidades', uPayload, 'name');
+            if (uRes.success && uRes.data) {
+                uRes.data.forEach(dbU => {
+                    const localU = appData.unidades.find(u => u.name.trim().toUpperCase() === dbU.name.trim().toUpperCase());
+                    if (localU) localU.id = dbU.id;
+                });
+            }
+        } catch(e) { console.warn("Error sync unidades:", e); }
 
         // Mapeo seguro de Unidades para Áreas hijas
         const validUnitIds = new Set(appData.unidades.map(u => u.id).filter(isValidUUID));
         const defaultUnitId = appData.unidades.find(u => isValidUUID(u.id))?.id || null;
 
         // 2. AREAS (Asegurar unit_id válido de unidades)
-        const aPayload = appData.areas.map(a => {
-            let uId = a.unitId;
-            if (!validUnitIds.has(uId)) {
-                uId = defaultUnitId;
-            }
-            return {
-                ...(isValidUUID(a.id) ? { id: a.id } : {}),
-                unit_id: uId,
-                name: (a.name || '').trim()
-            };
-        }).filter(a => a.name);
+        try {
+            const aPayload = appData.areas.map(a => {
+                let uId = a.unitId;
+                if (!validUnitIds.has(uId)) {
+                    uId = defaultUnitId;
+                }
+                return {
+                    ...(isValidUUID(a.id) ? { id: a.id } : {}),
+                    unit_id: uId,
+                    name: (a.name || '').trim()
+                };
+            }).filter(a => a.name);
 
-        const aRes = await syncTable('areas', aPayload, 'id');
-        if (aRes.success && aRes.data) {
-            aRes.data.forEach(dbA => {
-                const localA = appData.areas.find(a => a.name.trim().toUpperCase() === dbA.name.trim().toUpperCase() && a.unitId === dbA.unit_id);
-                if (localA) localA.id = dbA.id;
-            });
-        }
+            const aRes = await syncTable('areas', aPayload, 'id');
+            if (aRes.success && aRes.data) {
+                aRes.data.forEach(dbA => {
+                    const localA = appData.areas.find(a => a.name.trim().toUpperCase() === dbA.name.trim().toUpperCase() && a.unitId === dbA.unit_id);
+                    if (localA) localA.id = dbA.id;
+                });
+            }
+        } catch(e) { console.warn("Error sync areas:", e); }
 
         // Mapeo seguro de Áreas para Departamentos hijos
         const validAreaIds = new Set(appData.areas.map(a => a.id).filter(isValidUUID));
         const defaultAreaId = appData.areas.find(a => isValidUUID(a.id))?.id || null;
 
         // 3. DEPARTAMENTOS (Asegurar area_id válido de áreas)
-        const dPayload = appData.departamentos.map(d => {
-            let aId = d.areaId;
-            if (!validAreaIds.has(aId)) {
-                aId = defaultAreaId;
-            }
-            return {
-                ...(isValidUUID(d.id) ? { id: d.id } : {}),
-                area_id: aId,
-                name: (d.name || '').trim()
-            };
-        }).filter(d => d.name);
+        try {
+            const dPayload = appData.departamentos.map(d => {
+                let aId = d.areaId;
+                if (!validAreaIds.has(aId)) {
+                    aId = defaultAreaId;
+                }
+                return {
+                    ...(isValidUUID(d.id) ? { id: d.id } : {}),
+                    area_id: aId,
+                    name: (d.name || '').trim()
+                };
+            }).filter(d => d.name);
 
-        const dRes = await syncTable('departamentos', dPayload, 'id');
-        if (dRes.success && dRes.data) {
-            dRes.data.forEach(dbD => {
-                const localD = appData.departamentos.find(d => d.name.trim().toUpperCase() === dbD.name.trim().toUpperCase() && d.areaId === dbD.area_id);
-                if (localD) localD.id = dbD.id;
-            });
-        }
+            const dRes = await syncTable('departamentos', dPayload, 'id');
+            if (dRes.success && dRes.data) {
+                dRes.data.forEach(dbD => {
+                    const localD = appData.departamentos.find(d => d.name.trim().toUpperCase() === dbD.name.trim().toUpperCase() && d.areaId === dbD.area_id);
+                    if (localD) localD.id = dbD.id;
+                });
+            }
+        } catch(e) { console.warn("Error sync departamentos:", e); }
 
         // 4. PERSONAL (Conflict en ficha)
-        await syncTable('personal', appData.personal.map(p => ({
-            ficha: String(p.ficha || '').trim(), 
-            nombre: (p.nombre || '').trim(), 
-            ap_paterno: (p.apPaterno || '').trim(), 
-            ap_materno: (p.apMaterno || '').trim(), 
-            alta: p.alta ? (p.alta.includes('-') ? p.alta : p.alta.split('/').reverse().join('-')) : null,
-            unidad: (p.unidad || '').trim(), 
-            area: (p.area || '').trim(), 
-            depto: (p.depto || '').trim(), 
-            perfil_asignado: (p.perfilAsignado || '').trim()
-        })).filter(p => p.ficha), 'ficha');
+        try {
+            await syncTable('personal', appData.personal.map(p => ({
+                ficha: String(p.ficha || '').trim(), 
+                nombre: (p.nombre || '').trim(), 
+                ap_paterno: (p.apPaterno || '').trim(), 
+                ap_materno: (p.apMaterno || '').trim(), 
+                alta: p.alta ? (p.alta.includes('-') ? p.alta : p.alta.split('/').reverse().join('-')) : null,
+                unidad: (p.unidad || '').trim(), 
+                area: (p.area || '').trim(), 
+                depto: (p.depto || '').trim(), 
+                perfil_asignado: (p.perfilAsignado || '').trim()
+            })).filter(p => p.ficha), 'ficha');
+        } catch(e) { console.warn("Error sync personal:", e); }
 
-        // 5. USUARIOS (Conflict en username para evitar colisión de claves únicas)
-        const userPayload = appData.users.map(u => ({
-            ...(isValidUUID(u.id) ? { id: u.id } : {}),
-            nombre: (u.nombre || '').trim(), 
-            username: (u.user || '').trim(), 
-            password: (u.pass || '').trim(), 
-            role: u.role || 'USER',
-            unidad: u.unidad || 'ALL', 
-            area: u.area || 'ALL', 
-            depto: u.depto || 'ALL'
-        })).filter(u => u.username);
+        // 5. USUARIOS (Conflict en username sin id para evitar colisiones)
+        try {
+            const userPayload = appData.users.map(u => ({
+                nombre: (u.nombre || '').trim(), 
+                username: (u.user || '').trim(), 
+                password: (u.pass || '').trim(), 
+                role: u.role || 'USER',
+                unidad: u.unidad || 'ALL', 
+                area: u.area || 'ALL', 
+                depto: u.depto || 'ALL'
+            })).filter(u => u.username);
 
-        const userRes = await syncTable('app_users', userPayload, 'username');
-        if (userRes.success && userRes.data) {
-            userRes.data.forEach(dbU => {
-                const localU = appData.users.find(u => u.user.trim().toLowerCase() === dbU.username.trim().toLowerCase());
-                if (localU) localU.id = dbU.id;
-            });
-        }
+            const userRes = await syncTable('app_users', userPayload, 'username');
+            if (userRes.success && userRes.data) {
+                userRes.data.forEach(dbU => {
+                    const localU = appData.users.find(u => u.user.trim().toLowerCase() === dbU.username.trim().toLowerCase());
+                    if (localU) localU.id = dbU.id;
+                });
+            }
+        } catch(e) { console.warn("Error sync app_users:", e); }
 
-        // 6. CATALOGO (Conflict en codigo para evitar colisión de claves únicas)
-        const catPayload = appData.catalogo.map(c => ({
-            ...(isValidUUID(c.id) ? { id: c.id } : {}),
-            codigo: (c.codigo || '').trim().toUpperCase(), 
-            nombre: (c.nombre || '').trim(), 
-            categoria: c.categoria || 'Procedimiento',
-            area_aplica: c.areaAplica || 'GENERAL', 
-            descripcion: (c.descripcion || '').trim(), 
-            instructor: (c.instructor || '').trim(),
-            archivo_tipo: c.archivo || 'PDF', 
-            file_name: c.fileName || '', 
-            file_data: c.fileData || null
-        })).filter(c => c.codigo);
+        // 6. CATALOGO (Conflict en codigo sin id para respetar IDs de Supabase)
+        try {
+            const catPayload = appData.catalogo.map(c => ({
+                codigo: (c.codigo || '').trim().toUpperCase(), 
+                nombre: (c.nombre || '').trim(), 
+                categoria: c.categoria || 'Procedimiento',
+                area_aplica: c.areaAplica || 'GENERAL', 
+                descripcion: (c.descripcion || '').trim(), 
+                instructor: (c.instructor || '').trim(),
+                archivo_tipo: c.archivo || 'PDF', 
+                file_name: c.fileName || '', 
+                file_data: c.fileData || null
+            })).filter(c => c.codigo);
 
-        const catRes = await syncTable('catalogo', catPayload, 'codigo');
-        if (catRes.success && catRes.data) {
-            catRes.data.forEach(dbC => {
-                const localC = appData.catalogo.find(c => c.codigo.trim().toUpperCase() === dbC.codigo.trim().toUpperCase());
-                if (localC) localC.id = dbC.id;
-            });
-        }
+            const catRes = await syncTable('catalogo', catPayload, 'codigo');
+            if (catRes.success && catRes.data) {
+                catRes.data.forEach(dbC => {
+                    const localC = appData.catalogo.find(c => c.codigo.trim().toUpperCase() === dbC.codigo.trim().toUpperCase());
+                    if (localC) localC.id = dbC.id;
+                });
+            }
+        } catch(e) { console.warn("Error sync catalogo:", e); }
 
         // 7. MATRICES (Conflict en id)
         await syncTable('matrices', appData.matrices.map(m => ({
@@ -1927,13 +1936,45 @@ window.saveCatalogoItem = () => {
     
     save();
     closeCatalogoModal();
+
+    // Persistencia inmediata directa en Supabase
+    try {
+        _supabase.from('catalogo').upsert([{
+            codigo: item.codigo,
+            nombre: item.nombre,
+            categoria: item.categoria,
+            area_aplica: item.areaAplica,
+            descripcion: item.descripcion,
+            instructor: item.instructor,
+            archivo_tipo: item.archivo,
+            file_name: item.fileName,
+            file_data: item.fileData
+        }], { onConflict: 'codigo' }).select().then(res => {
+            if (res.error) {
+                console.error("❌ Error Supabase catalogo:", res.error.message);
+            } else {
+                console.log("✅ Tema guardado directamente en Supabase:", item.codigo);
+                if (res.data && res.data[0]) {
+                    const row = appData.catalogo.find(c => (c.codigo || '').trim().toUpperCase() === item.codigo);
+                    if (row) row.id = res.data[0].id;
+                }
+            }
+        });
+    } catch(err) {
+        console.warn("Fallo conexión Supabase tema:", err);
+    }
 }
 
 function deleteCatalogoItem(idx) {
     if(confirm('¿Eliminar este registro del catálogo?')) {
         const item = appData.catalogo[idx];
-        if (item && item.id && isValidUUID(item.id)) {
-            _supabase.from('catalogo').delete().eq('id', item.id).catch(e => console.warn(e));
+        if (item) {
+            if (item.codigo) {
+                _supabase.from('catalogo').delete().eq('codigo', item.codigo).catch(e => console.warn(e));
+            }
+            if (item.id && isValidUUID(item.id)) {
+                _supabase.from('catalogo').delete().eq('id', item.id).catch(e => console.warn(e));
+            }
         }
         appData.catalogo.splice(idx, 1);
         save();
@@ -2135,25 +2176,39 @@ function deleteCatalogoItem(idx) {
     window.closeAreaModal = () => document.getElementById('area-modal').classList.add('hidden');
     
     window.saveUnidad = () => {
-        const name = document.getElementById('unit-name').value;
+        const name = (document.getElementById('unit-name')?.value || '').trim();
         if(!name) return alert("Nombre obligatorio");
 
         if(currentEditUnitId) {
             const idx = appData.unidades.findIndex(u => u.id === currentEditUnitId);
             if(idx !== -1) appData.unidades[idx].name = name;
         } else {
+            const existing = appData.unidades.find(u => u.name.trim().toUpperCase() === name.toUpperCase());
+            if(existing) return alert("Ya existe una unidad con ese nombre.");
             appData.unidades.push({ id: crypto.randomUUID(), name: name });
         }
 
         renderEstructura();
         closeUnitModal();
         save();
+
+        // Guardado directo en Supabase
+        _supabase.from('unidades').upsert([{ name: name }], { onConflict: 'name' }).select().then(res => {
+            if (res.data && res.data[0]) {
+                const u = appData.unidades.find(unit => unit.name.trim().toUpperCase() === name.toUpperCase());
+                if (u) u.id = res.data[0].id;
+            }
+        }).catch(e => console.warn(e));
     };
 
     window.deleteUnidad = async (id) => {
         if(confirm('¿Eliminar esta unidad y toda su estructura relacionada?')) {
+            const unit = appData.unidades.find(u => u.id === id);
             if (id && isValidUUID(id)) {
                 await _supabase.from('unidades').delete().eq('id', id).catch(e => console.warn(e));
+            }
+            if (unit && unit.name) {
+                await _supabase.from('unidades').delete().eq('name', unit.name).catch(e => console.warn(e));
             }
             appData.unidades = appData.unidades.filter(u => u.id !== id);
             const areasToRemove = appData.areas.filter(a => a.unitId === id).map(a => a.id);
@@ -2169,13 +2224,17 @@ function deleteCatalogoItem(idx) {
     };
     
     window.saveArea = () => {
-        const name = document.getElementById('new-area-name').value;
+        const name = (document.getElementById('new-area-name')?.value || '').trim();
         if(!name) return alert("Nombre obligatorio");
         const id = crypto.randomUUID();
         appData.areas.push({ id, unitId: currentActiveUnitId, name });
         renderEstructura();
         closeAreaModal();
         save();
+
+        if (currentActiveUnitId && isValidUUID(currentActiveUnitId)) {
+            _supabase.from('areas').upsert([{ id, unit_id: currentActiveUnitId, name }], { onConflict: 'id' }).catch(e => console.warn(e));
+        }
     };
 
     window.openDeptoModal = (areaId) => {
@@ -2186,13 +2245,17 @@ function deleteCatalogoItem(idx) {
     window.closeDeptoModal = () => document.getElementById('depto-modal').classList.add('hidden');
 
     window.saveDepto = () => {
-        const name = document.getElementById('new-depto-name').value;
+        const name = (document.getElementById('new-depto-name')?.value || '').trim();
         if(!name) return alert("Nombre obligatorio");
         const id = crypto.randomUUID();
-        appData.departamentos.push({ id: crypto.randomUUID(), areaId: currentActiveAreaId, name });
+        appData.departamentos.push({ id, areaId: currentActiveAreaId, name });
         renderEstructura();
         closeDeptoModal();
         save();
+
+        if (currentActiveAreaId && isValidUUID(currentActiveAreaId)) {
+            _supabase.from('departamentos').upsert([{ id, area_id: currentActiveAreaId, name }], { onConflict: 'id' }).catch(e => console.warn(e));
+        }
     };
 
     // --- DETALLE DE MATRIZ (PERSONAL VS TEMAS) ---
