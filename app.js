@@ -61,21 +61,70 @@ window.hideSplashScreen = () => {
 
 // HELPER: Validar si un string es un UUID válido
 function isValidUUID(uuid) {
+    if (!uuid) return false;
     const s = "" + uuid;
     const re = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     return re.test(s);
 }
 
-// HELPER: Asegurar que un ID sea UUID o generarlo y actualizar el objeto
+// HELPER: Asegurar que un ID sea UUID válido persistente
 function ensureUUID(obj) {
+    if (!obj) return crypto.randomUUID();
     if (typeof obj === 'string') return isValidUUID(obj) ? obj : crypto.randomUUID();
-    if (obj && obj.id && !isValidUUID(obj.id)) {
-        obj.id = crypto.randomUUID();
+    if (obj.id) {
+        if (!isValidUUID(obj.id)) obj.id = crypto.randomUUID();
+        return obj.id;
     }
-    return obj ? obj.id : crypto.randomUUID();
+    obj.id = crypto.randomUUID();
+    return obj.id;
 }
 
-// CONFIG SUPABASE
+// Normalizar todas las relaciones y UUIDs de appData para garantizar integridad en Supabase
+function normalizeRelationships() {
+    // 1. Mapear unidades a UUIDs válidos
+    const unitMap = new Map();
+    appData.unidades.forEach(u => {
+        if (!u.id || !isValidUUID(u.id)) {
+            const oldId = u.id;
+            u.id = crypto.randomUUID();
+            if (oldId) unitMap.set(String(oldId), u.id);
+        }
+    });
+
+    // 2. Mapear áreas a UUIDs válidos y vincular a la unidad correcta
+    const areaMap = new Map();
+    appData.areas.forEach(a => {
+        if (a.unitId && unitMap.has(String(a.unitId))) {
+            a.unitId = unitMap.get(String(a.unitId));
+        }
+        if (!a.id || !isValidUUID(a.id)) {
+            const oldId = a.id;
+            a.id = crypto.randomUUID();
+            if (oldId) areaMap.set(String(oldId), a.id);
+        }
+    });
+
+    // 3. Mapear departamentos a UUIDs válidos y vincular al área correcta
+    appData.departamentos.forEach(d => {
+        if (d.areaId && areaMap.has(String(d.areaId))) {
+            d.areaId = areaMap.get(String(d.areaId));
+        }
+        if (!d.id || !isValidUUID(d.id)) {
+            d.id = crypto.randomUUID();
+        }
+    });
+
+    // 4. Catálogo, Matrices, Perfiles, Instructores, Usuarios
+    appData.catalogo.forEach(c => { if (!c.id || !isValidUUID(c.id)) c.id = crypto.randomUUID(); });
+    appData.matrices.forEach(m => { if (!m.id || !isValidUUID(m.id)) m.id = crypto.randomUUID(); });
+    appData.perfiles.forEach(p => { if (!p.id || !isValidUUID(p.id)) p.id = crypto.randomUUID(); });
+    appData.instructors.forEach(i => { if (!i.id || !isValidUUID(i.id)) i.id = crypto.randomUUID(); });
+    appData.users.forEach(u => { if (!u.id || !isValidUUID(u.id)) u.id = crypto.randomUUID(); });
+}
+
+// Ejecutar normalización al inicio
+normalizeRelationships();
+
 // CONFIG SUPABASE
 const SUPABASE_URL = 'https://amuhlvjubodoaoqdqvyj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtdWhsdmp1Ym9kb2FvcWRxdnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjg1MTIsImV4cCI6MjA5Mzg0NDUxMn0.YYEchJkcpnz-ZxJrAonqCxecNhL4UhHdHH-IdHhE-Zk';
@@ -84,7 +133,11 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = JSON.parse(sessionStorage.getItem('erp_current_user')) || null;
 let saveTimeout;
+
 async function save() {
+    // Normalizar relaciones antes de guardar
+    normalizeRelationships();
+
     // Guardado Local Inmediato para evitar pérdida de datos
     localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
     localStorage.setItem('erp_pers', JSON.stringify(appData.personal));
@@ -105,102 +158,106 @@ async function save() {
 
 async function saveToCloud() {
     try {
-        console.log("Iniciando persistencia profesional...");
+        console.log("Iniciando persistencia profesional en Supabase...");
         
         const syncTable = async (tableName, data, onConflict = 'id') => {
-            if (!data || data.length === 0) return;
+            if (!data || data.length === 0) return { success: true };
             const { error } = await _supabase.from(tableName).upsert(data, { onConflict });
             if (error) {
-                console.error(`Error en ${tableName}:`, error.message);
-                // Notificación sutil en consola para el usuario si es crítico
-                if (tableName === 'app_users' || tableName === 'personal') {
-                    console.warn(`Aviso: No se pudo sincronizar la tabla ${tableName}. Verifique su conexión.`);
-                }
+                console.error(`❌ [Error en ${tableName}]:`, error.message, error.details || '', error.hint || '');
+                return { success: false, error };
             } else {
-                console.log(`Sincronizado: ${tableName}`);
+                console.log(`✅ [Sincronizado]: ${tableName} (${data.length} registros)`);
+                return { success: true };
             }
         };
 
-        // 1. UNIDADES (Prioridad)
+        // 1. UNIDADES (Primero para asegurar IDs padre)
         await syncTable('unidades', appData.unidades.map(u => ({ 
-            id: ensureUUID(u), 
-            name: u.name 
+            id: u.id, 
+            name: u.name || '' 
         })));
 
-        // 2. ESTRUCTURA
+        // 2. AREAS (Depende de unidades)
         await syncTable('areas', appData.areas.map(a => ({
-            id: ensureUUID(a),
-            unit_id: ensureUUID(a.unitId),
-            name: a.name
+            id: a.id,
+            unit_id: a.unitId || null,
+            name: a.name || ''
         })));
 
+        // 3. DEPARTAMENTOS (Depende de areas)
         await syncTable('departamentos', appData.departamentos.map(d => ({
-            id: ensureUUID(d),
-            area_id: ensureUUID(d.areaId),
-            name: d.name
+            id: d.id,
+            area_id: d.areaId || null,
+            name: d.name || ''
         })));
 
-        // 3. PERSONAL Y USUARIOS
+        // 4. PERSONAL (Conflict en ficha)
         await syncTable('personal', appData.personal.map(p => ({
-            uid: ensureUUID(p.uid || p.ficha),
-            ficha: p.ficha, 
-            nombre: p.nombre, 
-            ap_paterno: p.apPaterno, 
-            ap_materno: p.apMaterno,
+            ficha: String(p.ficha || ''), 
+            nombre: p.nombre || '', 
+            ap_paterno: p.apPaterno || '', 
+            ap_materno: p.apMaterno || '', 
             alta: p.alta ? (p.alta.includes('-') ? p.alta : p.alta.split('/').reverse().join('-')) : null,
-            unidad: p.unidad, 
-            area: p.area, 
-            depto: p.depto, 
-            perfil_asignado: p.perfilAsignado
+            unidad: p.unidad || '', 
+            area: p.area || '', 
+            depto: p.depto || '', 
+            perfil_asignado: p.perfilAsignado || ''
         })), 'ficha');
 
+        // 5. USUARIOS (Conflict en id)
         await syncTable('app_users', appData.users.map(u => ({
-            id: ensureUUID(u.id),
-            nombre: u.nombre, 
-            username: u.user, 
-            password: u.pass, 
-            role: u.role,
-            unidad: u.unidad, 
-            area: u.area, 
-            depto: u.depto
-        })), 'username');
+            id: u.id,
+            nombre: u.nombre || '', 
+            username: u.user || '', 
+            password: u.pass || '', 
+            role: u.role || 'USER',
+            unidad: u.unidad || 'ALL', 
+            area: u.area || 'ALL', 
+            depto: u.depto || 'ALL'
+        })), 'id');
 
-        // 4. CONOCIMIENTO Y MATRICES
+        // 6. CATALOGO (Conflict en id)
         await syncTable('catalogo', appData.catalogo.map(c => ({
-            id: ensureUUID(c.id),
-            codigo: c.codigo, 
-            nombre: c.nombre, 
-            categoria: c.categoria,
-            area_aplica: c.areaAplica, 
-            descripcion: c.descripcion, 
-            instructor: c.instructor,
-            archivo_tipo: c.archivo, 
-            file_name: c.fileName, 
-            file_data: c.fileData
+            id: c.id,
+            codigo: c.codigo || '', 
+            nombre: c.nombre || '', 
+            categoria: c.categoria || 'Procedimiento',
+            area_aplica: c.areaAplica || 'GENERAL', 
+            descripcion: c.descripcion || '', 
+            instructor: c.instructor || '',
+            archivo_tipo: c.archivo || 'PDF', 
+            file_name: c.fileName || '', 
+            file_data: c.fileData || null
         })));
 
+        // 7. MATRICES (Conflict en id)
         await syncTable('matrices', appData.matrices.map(m => ({
-            id: ensureUUID(m.id),
-            name: m.name,
-            depto: m.depto,
-            category: m.category,
-            start_date: m.start,
-            end_date: m.end,
-            topics: m.topics,
-            attendance: m.attendance
+            id: m.id,
+            name: m.name || '',
+            depto: m.depto || '',
+            category: m.category || 'Procedimiento',
+            start_date: m.start || null,
+            end_date: m.end || null,
+            topics: m.topics || [],
+            attendance: m.attendance || {}
         })));
 
+        // 8. PERFILES (Mapeo seguro compatible con esquema de Supabase)
         await syncTable('perfiles', appData.perfiles.map(p => ({
-            ...p,
-            id: ensureUUID(p.id)
+            id: p.id,
+            name: p.nombre || p.name || '',
+            unit_id: p.unidad || p.unit_id || '',
+            area_id: p.area || p.area_id || '',
+            topics: p.topics || []
         })));
 
+        // 9. INSTRUCTORES
         await syncTable('instructores', appData.instructors.map(i => ({
-            id: ensureUUID(i.id),
-            name: i.name,
-            specialty: i.specialty,
-            topics_ids: i.topicsIds,
-            files: i.files
+            id: i.id,
+            name: i.name || '',
+            specialty: i.specialty || '',
+            files: i.files || []
         })));
 
     } catch(e) {
@@ -238,8 +295,10 @@ async function syncFromCloud() {
         console.log("Sincronización profesional iniciada...");
         
         // 1. CARGA RÁPIDA DE SESIÓN (Prioridad absoluta)
-        const { data: users } = await _supabase.from('app_users').select('*');
-        if(users) {
+        const { data: users, error: userErr } = await _supabase.from('app_users').select('*');
+        if (userErr) {
+            console.warn("[Aviso Supabase app_users]:", userErr.message);
+        } else if (users && users.length > 0) {
             appData.users = users.map(u => ({
                 id: u.id, nombre: u.nombre, user: u.username, pass: u.password,
                 role: u.role, unidad: u.unidad, area: u.area, depto: u.depto
@@ -254,39 +313,88 @@ async function syncFromCloud() {
 
         // 2. CARGA EN PARALELO DEL RESTO DE LA APP (Background)
         const tables = [
-            { name: 'personal', setter: (data) => {
-                appData.personal = data.map(p => {
-                    let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
-                    return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
-                });
-            }},
-            { name: 'catalogo', setter: (data) => {
-                appData.catalogo = data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
-            }},
-            { name: 'unidades', setter: (data) => appData.unidades = data },
-            { name: 'areas', setter: (data) => appData.areas = data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })) },
-            { name: 'departamentos', setter: (data) => appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })) },
-            { name: 'matrices', setter: (data) => appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })) },
-            { name: 'perfiles', setter: (data) => appData.perfiles = data },
-            { name: 'instructores', setter: (data) => {
-                appData.instructors = data.map(i => ({
-                    id: i.id,
-                    name: i.name,
-                    specialty: i.specialty,
-                    topicsIds: i.topics_ids || i.topicsIds || [],
-                    files: i.files || []
-                }));
-            }}
+            { 
+                name: 'personal', 
+                getLocal: () => appData.personal,
+                setter: (data) => {
+                    appData.personal = data.map(p => {
+                        let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
+                        return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
+                    });
+                }
+            },
+            { 
+                name: 'catalogo', 
+                getLocal: () => appData.catalogo,
+                setter: (data) => {
+                    appData.catalogo = data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
+                }
+            },
+            { 
+                name: 'unidades', 
+                getLocal: () => appData.unidades,
+                setter: (data) => { appData.unidades = data; } 
+            },
+            { 
+                name: 'areas', 
+                getLocal: () => appData.areas,
+                setter: (data) => { appData.areas = data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })); } 
+            },
+            { 
+                name: 'departamentos', 
+                getLocal: () => appData.departamentos,
+                setter: (data) => { appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })); } 
+            },
+            { 
+                name: 'matrices', 
+                getLocal: () => appData.matrices,
+                setter: (data) => { appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })); } 
+            },
+            { 
+                name: 'perfiles', 
+                getLocal: () => appData.perfiles,
+                setter: (data) => { appData.perfiles = data; } 
+            },
+            { 
+                name: 'instructores', 
+                getLocal: () => appData.instructors,
+                setter: (data) => {
+                    appData.instructors = data.map(i => ({
+                        id: i.id,
+                        name: i.name,
+                        specialty: i.specialty,
+                        topicsIds: i.topics_ids || i.topicsIds || [],
+                        files: i.files || []
+                    }));
+                }
+            }
         ];
+
+        let hasLocalToUpload = false;
 
         tables.forEach(t => {
             _supabase.from(t.name).select('*').then(res => {
-                if(res.data) {
+                if (res.error) {
+                    console.error(`[Error Supabase al consultar ${t.name}]:`, res.error.message);
+                } else if (res.data && res.data.length > 0) {
                     t.setter(res.data);
                     render();
+                } else if (res.data && res.data.length === 0) {
+                    const localData = t.getLocal();
+                    if (localData && localData.length > 0) {
+                        console.log(`[Auto-Sync] Tabla ${t.name} vacía en Supabase. Subiendo ${localData.length} registros locales...`);
+                        hasLocalToUpload = true;
+                    }
                 }
             });
         });
+
+        // Si hay datos locales que Supabase no tiene, sincronizarlos automáticamente
+        setTimeout(() => {
+            if (hasLocalToUpload) {
+                saveToCloud();
+            }
+        }, 1200);
 
         if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
         console.log("Sincronización en segundo plano activa.");
@@ -502,6 +610,10 @@ window.openAssignProfileModalByFicha = (ficha) => {
 
 window.deleteWorkerByUid = (uid) => {
     if(confirm('¿Estás seguro de eliminar este registro específico? Esta acción no se puede deshacer.')) {
+        const p = appData.personal.find(pers => (pers.uid || pers.ficha) == uid);
+        if (p && p.ficha) {
+            _supabase.from('personal').delete().eq('ficha', p.ficha).catch(e => console.warn(e));
+        }
         const idx = appData.personal.findIndex(p => (p.uid || p.ficha) == uid);
         if(idx !== -1) {
             appData.personal.splice(idx, 1);
@@ -547,7 +659,7 @@ function editOrganizacion() {
     const nuevoNombre = prompt("Ingresa el nuevo nombre de la organización:", appData.organizacion.name);
     if(nuevoNombre && nuevoNombre.trim() !== "") {
         appData.organizacion.name = nuevoNombre.trim();
-        save(); // Esto guardará en local y en la tabla app_config de Supabase
+        save();
     }
 }
 
@@ -587,6 +699,10 @@ function editNode(type, id) {
 
 function deleteNode(type, id) {
     if(!confirm(`¿Estás seguro de eliminar esta ${type}? Se perderá toda su estructura interna.`)) return;
+    if(id && isValidUUID(id)) {
+        const table = type === 'unidad' ? 'unidades' : (type === 'area' ? 'areas' : 'departamentos');
+        _supabase.from(table).delete().eq('id', id).catch(e => console.warn(e));
+    }
     if(type === 'unidad') appData.unidades = appData.unidades.filter(u => u.id !== id);
     if(type === 'area') appData.areas = appData.areas.filter(a => a.id !== id);
     if(type === 'depto') appData.departamentos = appData.departamentos.filter(d => d.id !== id);
@@ -1702,6 +1818,10 @@ window.saveCatalogoItem = () => {
 
 function deleteCatalogoItem(idx) {
     if(confirm('¿Eliminar este registro del catálogo?')) {
+        const item = appData.catalogo[idx];
+        if (item && item.id && isValidUUID(item.id)) {
+            _supabase.from('catalogo').delete().eq('id', item.id).catch(e => console.warn(e));
+        }
         appData.catalogo.splice(idx, 1);
         save();
     }
@@ -1882,6 +2002,9 @@ function deleteCatalogoItem(idx) {
 
     function deleteMatriz(id) {
         if(confirm('¿Eliminar esta matriz de capacitación?')) {
+            if (id && isValidUUID(id)) {
+                _supabase.from('matrices').delete().eq('id', id).catch(e => console.warn(e));
+            }
             appData.matrices = appData.matrices.filter(m => m.id !== id);
             save();
         }
@@ -1911,10 +2034,16 @@ function deleteCatalogoItem(idx) {
         save();
     };
 
-    window.deleteUnidad = (id) => {
+    window.deleteUnidad = async (id) => {
         if(confirm('¿Eliminar esta unidad y toda su estructura relacionada?')) {
+            if (id && isValidUUID(id)) {
+                await _supabase.from('unidades').delete().eq('id', id).catch(e => console.warn(e));
+            }
             appData.unidades = appData.unidades.filter(u => u.id !== id);
             const areasToRemove = appData.areas.filter(a => a.unitId === id).map(a => a.id);
+            for (const aId of areasToRemove) {
+                if (isValidUUID(aId)) await _supabase.from('areas').delete().eq('id', aId).catch(e => console.warn(e));
+            }
             appData.areas = appData.areas.filter(a => a.unitId !== id);
             appData.departamentos = appData.departamentos.filter(d => !areasToRemove.includes(d.areaId));
             
