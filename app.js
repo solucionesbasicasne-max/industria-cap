@@ -138,7 +138,7 @@ async function save() {
     // Normalizar relaciones antes de guardar
     normalizeRelationships();
 
-    // Guardado Local Inmediato para evitar pérdida de datos
+    // Guardado Local Inmediato para evitar pérdida de datos (Optimistic UI)
     localStorage.setItem('erp_branding', JSON.stringify(appData.organizacion));
     localStorage.setItem('erp_pers', JSON.stringify(appData.personal));
     localStorage.setItem('erp_perfs', JSON.stringify(appData.perfiles));
@@ -150,10 +150,14 @@ async function save() {
     localStorage.setItem('erp_users', JSON.stringify(appData.users));
     localStorage.setItem('erp_instructors', JSON.stringify(appData.instructors));
     
-    // Persistencia en la Nube
-    saveToCloud();
     render();
-    console.log("Datos actualizados en UI y sincronizando con la nube...");
+    console.log("Datos actualizados en UI localmente. Persistiendo en Supabase...");
+
+    // Persistencia en la Nube con debounce para evitar colisiones múltiples
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+        await saveToCloud();
+    }, 200);
 }
 
 async function saveToCloud() {
@@ -161,104 +165,174 @@ async function saveToCloud() {
         console.log("Iniciando persistencia profesional en Supabase...");
         
         const syncTable = async (tableName, data, onConflict = 'id') => {
-            if (!data || data.length === 0) return { success: true };
-            const { error } = await _supabase.from(tableName).upsert(data, { onConflict });
+            if (!data || data.length === 0) return { success: true, data: [] };
+            const { data: result, error } = await _supabase.from(tableName).upsert(data, { onConflict }).select();
             if (error) {
                 console.error(`❌ [Error en ${tableName}]:`, error.message, error.details || '', error.hint || '');
                 return { success: false, error };
             } else {
                 console.log(`✅ [Sincronizado]: ${tableName} (${data.length} registros)`);
-                return { success: true };
+                return { success: true, data: result };
             }
         };
 
-        // 1. UNIDADES (Primero para asegurar IDs padre)
-        await syncTable('unidades', appData.unidades.map(u => ({ 
-            id: u.id, 
-            name: u.name || '' 
-        })));
+        // 1. UNIDADES (Conflict en 'name' para respetar la clave única de Supabase)
+        const uPayload = appData.unidades.map(u => ({ 
+            ...(isValidUUID(u.id) ? { id: u.id } : {}),
+            name: (u.name || '').trim() 
+        })).filter(u => u.name);
 
-        // 2. AREAS (Depende de unidades)
-        await syncTable('areas', appData.areas.map(a => ({
-            id: a.id,
-            unit_id: a.unitId || null,
-            name: a.name || ''
-        })));
+        const uRes = await syncTable('unidades', uPayload, 'name');
+        if (uRes.success && uRes.data) {
+            uRes.data.forEach(dbU => {
+                const localU = appData.unidades.find(u => u.name.trim().toUpperCase() === dbU.name.trim().toUpperCase());
+                if (localU) localU.id = dbU.id;
+            });
+        }
 
-        // 3. DEPARTAMENTOS (Depende de areas)
-        await syncTable('departamentos', appData.departamentos.map(d => ({
-            id: d.id,
-            area_id: d.areaId || null,
-            name: d.name || ''
-        })));
+        // Mapeo seguro de Unidades para Áreas hijas
+        const validUnitIds = new Set(appData.unidades.map(u => u.id).filter(isValidUUID));
+        const defaultUnitId = appData.unidades.find(u => isValidUUID(u.id))?.id || null;
+
+        // 2. AREAS (Asegurar unit_id válido de unidades)
+        const aPayload = appData.areas.map(a => {
+            let uId = a.unitId;
+            if (!validUnitIds.has(uId)) {
+                uId = defaultUnitId;
+            }
+            return {
+                ...(isValidUUID(a.id) ? { id: a.id } : {}),
+                unit_id: uId,
+                name: (a.name || '').trim()
+            };
+        }).filter(a => a.name);
+
+        const aRes = await syncTable('areas', aPayload, 'id');
+        if (aRes.success && aRes.data) {
+            aRes.data.forEach(dbA => {
+                const localA = appData.areas.find(a => a.name.trim().toUpperCase() === dbA.name.trim().toUpperCase() && a.unitId === dbA.unit_id);
+                if (localA) localA.id = dbA.id;
+            });
+        }
+
+        // Mapeo seguro de Áreas para Departamentos hijos
+        const validAreaIds = new Set(appData.areas.map(a => a.id).filter(isValidUUID));
+        const defaultAreaId = appData.areas.find(a => isValidUUID(a.id))?.id || null;
+
+        // 3. DEPARTAMENTOS (Asegurar area_id válido de áreas)
+        const dPayload = appData.departamentos.map(d => {
+            let aId = d.areaId;
+            if (!validAreaIds.has(aId)) {
+                aId = defaultAreaId;
+            }
+            return {
+                ...(isValidUUID(d.id) ? { id: d.id } : {}),
+                area_id: aId,
+                name: (d.name || '').trim()
+            };
+        }).filter(d => d.name);
+
+        const dRes = await syncTable('departamentos', dPayload, 'id');
+        if (dRes.success && dRes.data) {
+            dRes.data.forEach(dbD => {
+                const localD = appData.departamentos.find(d => d.name.trim().toUpperCase() === dbD.name.trim().toUpperCase() && d.areaId === dbD.area_id);
+                if (localD) localD.id = dbD.id;
+            });
+        }
 
         // 4. PERSONAL (Conflict en ficha)
         await syncTable('personal', appData.personal.map(p => ({
-            ficha: String(p.ficha || ''), 
-            nombre: p.nombre || '', 
-            ap_paterno: p.apPaterno || '', 
-            ap_materno: p.apMaterno || '', 
+            ficha: String(p.ficha || '').trim(), 
+            nombre: (p.nombre || '').trim(), 
+            ap_paterno: (p.apPaterno || '').trim(), 
+            ap_materno: (p.apMaterno || '').trim(), 
             alta: p.alta ? (p.alta.includes('-') ? p.alta : p.alta.split('/').reverse().join('-')) : null,
-            unidad: p.unidad || '', 
-            area: p.area || '', 
-            depto: p.depto || '', 
-            perfil_asignado: p.perfilAsignado || ''
-        })), 'ficha');
+            unidad: (p.unidad || '').trim(), 
+            area: (p.area || '').trim(), 
+            depto: (p.depto || '').trim(), 
+            perfil_asignado: (p.perfilAsignado || '').trim()
+        })).filter(p => p.ficha), 'ficha');
 
-        // 5. USUARIOS (Conflict en id)
-        await syncTable('app_users', appData.users.map(u => ({
-            id: u.id,
-            nombre: u.nombre || '', 
-            username: u.user || '', 
-            password: u.pass || '', 
+        // 5. USUARIOS (Conflict en username para evitar colisión de claves únicas)
+        const userPayload = appData.users.map(u => ({
+            ...(isValidUUID(u.id) ? { id: u.id } : {}),
+            nombre: (u.nombre || '').trim(), 
+            username: (u.user || '').trim(), 
+            password: (u.pass || '').trim(), 
             role: u.role || 'USER',
             unidad: u.unidad || 'ALL', 
             area: u.area || 'ALL', 
             depto: u.depto || 'ALL'
-        })), 'id');
+        })).filter(u => u.username);
 
-        // 6. CATALOGO (Conflict en id)
-        await syncTable('catalogo', appData.catalogo.map(c => ({
-            id: c.id,
-            codigo: c.codigo || '', 
-            nombre: c.nombre || '', 
+        const userRes = await syncTable('app_users', userPayload, 'username');
+        if (userRes.success && userRes.data) {
+            userRes.data.forEach(dbU => {
+                const localU = appData.users.find(u => u.user.trim().toLowerCase() === dbU.username.trim().toLowerCase());
+                if (localU) localU.id = dbU.id;
+            });
+        }
+
+        // 6. CATALOGO (Conflict en codigo para evitar colisión de claves únicas)
+        const catPayload = appData.catalogo.map(c => ({
+            ...(isValidUUID(c.id) ? { id: c.id } : {}),
+            codigo: (c.codigo || '').trim().toUpperCase(), 
+            nombre: (c.nombre || '').trim(), 
             categoria: c.categoria || 'Procedimiento',
             area_aplica: c.areaAplica || 'GENERAL', 
-            descripcion: c.descripcion || '', 
-            instructor: c.instructor || '',
+            descripcion: (c.descripcion || '').trim(), 
+            instructor: (c.instructor || '').trim(),
             archivo_tipo: c.archivo || 'PDF', 
             file_name: c.fileName || '', 
             file_data: c.fileData || null
-        })));
+        })).filter(c => c.codigo);
+
+        const catRes = await syncTable('catalogo', catPayload, 'codigo');
+        if (catRes.success && catRes.data) {
+            catRes.data.forEach(dbC => {
+                const localC = appData.catalogo.find(c => c.codigo.trim().toUpperCase() === dbC.codigo.trim().toUpperCase());
+                if (localC) localC.id = dbC.id;
+            });
+        }
 
         // 7. MATRICES (Conflict en id)
         await syncTable('matrices', appData.matrices.map(m => ({
-            id: m.id,
-            name: m.name || '',
-            depto: m.depto || '',
+            id: ensureUUID(m),
+            name: (m.name || '').trim(),
+            depto: (m.depto || '').trim(),
             category: m.category || 'Procedimiento',
             start_date: m.start || null,
             end_date: m.end || null,
             topics: m.topics || [],
             attendance: m.attendance || {}
-        })));
+        })).filter(m => m.name), 'id');
 
-        // 8. PERFILES (Mapeo seguro compatible con esquema de Supabase)
+        // 8. PERFILES (Conflict en id)
         await syncTable('perfiles', appData.perfiles.map(p => ({
-            id: p.id,
-            name: p.nombre || p.name || '',
+            id: ensureUUID(p),
+            name: (p.nombre || p.name || '').trim(),
             unit_id: p.unidad || p.unit_id || '',
             area_id: p.area || p.area_id || '',
             topics: p.topics || []
-        })));
+        })).filter(p => p.name), 'id');
 
-        // 9. INSTRUCTORES
+        // 9. INSTRUCTORES (Conflict en id)
         await syncTable('instructores', appData.instructors.map(i => ({
-            id: i.id,
-            name: i.name || '',
-            specialty: i.specialty || '',
+            id: ensureUUID(i),
+            name: (i.name || '').trim(),
+            specialty: (i.specialty || '').trim(),
             files: i.files || []
-        })));
+        })).filter(i => i.name), 'id');
+
+        // Guardar IDs reconciliados nuevamente en localStorage
+        localStorage.setItem('erp_units', JSON.stringify(appData.unidades));
+        localStorage.setItem('erp_areas', JSON.stringify(appData.areas));
+        localStorage.setItem('erp_depts', JSON.stringify(appData.departamentos));
+        localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
+        localStorage.setItem('erp_users', JSON.stringify(appData.users));
+        localStorage.setItem('erp_mats', JSON.stringify(appData.matrices));
+
+        console.log("✅ Persistencia completa y consistente en Supabase y LocalStorage.");
 
     } catch(e) {
         console.error("Fallo crítico en sincronización:", e);
@@ -315,48 +389,73 @@ async function syncFromCloud() {
         const tables = [
             { 
                 name: 'personal', 
+                localKey: 'erp_pers',
                 getLocal: () => appData.personal,
                 setter: (data) => {
                     appData.personal = data.map(p => {
                         let f = p.alta; if(f && f.includes('-')) { const [y,m,d]=f.split('-'); f=`${d}/${m}/${y}`; }
                         return { ficha:p.ficha, nombre:p.nombre, apPaterno:p.ap_paterno, apMaterno:p.ap_materno, alta:f, unidad:p.unidad, area:p.area, depto:p.depto, perfilAsignado:p.perfil_asignado };
                     });
+                    localStorage.setItem('erp_pers', JSON.stringify(appData.personal));
                 }
             },
             { 
                 name: 'catalogo', 
+                localKey: 'erp_cat',
                 getLocal: () => appData.catalogo,
                 setter: (data) => {
                     appData.catalogo = data.map(c => ({ id:c.id, codigo:c.codigo, nombre:c.nombre, categoria:c.categoria, areaAplica:c.area_aplica, descripcion:c.descripcion, instructor:c.instructor, archivo:c.archivo_tipo, fileName:c.file_name, fileData:c.file_data }));
+                    localStorage.setItem('erp_cat', JSON.stringify(appData.catalogo));
                 }
             },
             { 
                 name: 'unidades', 
+                localKey: 'erp_units',
                 getLocal: () => appData.unidades,
-                setter: (data) => { appData.unidades = data; } 
+                setter: (data) => { 
+                    appData.unidades = data; 
+                    localStorage.setItem('erp_units', JSON.stringify(appData.unidades));
+                } 
             },
             { 
                 name: 'areas', 
+                localKey: 'erp_areas',
                 getLocal: () => appData.areas,
-                setter: (data) => { appData.areas = data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })); } 
+                setter: (data) => { 
+                    appData.areas = data.map(a => ({ id:a.id, unitId:a.unit_id, name:a.name })); 
+                    localStorage.setItem('erp_areas', JSON.stringify(appData.areas));
+                } 
             },
             { 
                 name: 'departamentos', 
+                localKey: 'erp_depts',
                 getLocal: () => appData.departamentos,
-                setter: (data) => { appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })); } 
+                setter: (data) => { 
+                    appData.departamentos = data.map(d => ({ id:d.id, areaId:d.area_id, name:d.name })); 
+                    localStorage.setItem('erp_depts', JSON.stringify(appData.departamentos));
+                } 
             },
             { 
                 name: 'matrices', 
+                localKey: 'erp_mats',
                 getLocal: () => appData.matrices,
-                setter: (data) => { appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })); } 
+                setter: (data) => { 
+                    appData.matrices = data.map(m => ({ id:m.id, name:m.name, depto:m.depto, category:m.category, start:m.start_date, end:m.end_date, topics:m.topics, attendance:m.attendance })); 
+                    localStorage.setItem('erp_mats', JSON.stringify(appData.matrices));
+                } 
             },
             { 
                 name: 'perfiles', 
+                localKey: 'erp_perfs',
                 getLocal: () => appData.perfiles,
-                setter: (data) => { appData.perfiles = data; } 
+                setter: (data) => { 
+                    appData.perfiles = data; 
+                    localStorage.setItem('erp_perfs', JSON.stringify(appData.perfiles));
+                } 
             },
             { 
                 name: 'instructores', 
+                localKey: 'erp_instructors',
                 getLocal: () => appData.instructors,
                 setter: (data) => {
                     appData.instructors = data.map(i => ({
@@ -366,19 +465,20 @@ async function syncFromCloud() {
                         topicsIds: i.topics_ids || i.topicsIds || [],
                         files: i.files || []
                     }));
+                    localStorage.setItem('erp_instructors', JSON.stringify(appData.instructors));
                 }
             }
         ];
 
         let hasLocalToUpload = false;
 
-        tables.forEach(t => {
-            _supabase.from(t.name).select('*').then(res => {
+        for (const t of tables) {
+            try {
+                const res = await _supabase.from(t.name).select('*');
                 if (res.error) {
                     console.error(`[Error Supabase al consultar ${t.name}]:`, res.error.message);
                 } else if (res.data && res.data.length > 0) {
                     t.setter(res.data);
-                    render();
                 } else if (res.data && res.data.length === 0) {
                     const localData = t.getLocal();
                     if (localData && localData.length > 0) {
@@ -386,21 +486,23 @@ async function syncFromCloud() {
                         hasLocalToUpload = true;
                     }
                 }
-            });
-        });
-
-        // Si hay datos locales que Supabase no tiene, sincronizarlos automáticamente
-        setTimeout(() => {
-            if (hasLocalToUpload) {
-                saveToCloud();
+            } catch (err) {
+                console.warn(`Error al obtener ${t.name}:`, err);
             }
-        }, 1200);
+        }
+
+        render();
+
+        if (hasLocalToUpload) {
+            saveToCloud();
+        }
 
         if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
-        console.log("Sincronización en segundo plano activa.");
+        console.log("Sincronización en segundo plano completada con éxito.");
 
     } catch(e) {
         console.warn("Modo Offline / Error de Conexión:", e);
+    } finally {
         if (typeof window.hideSplashScreen === 'function') window.hideSplashScreen();
     }
 }
@@ -908,9 +1010,15 @@ function openEstructuraModal(type, parentId = null, deptoName = null) {
         renderBatchList();
     } else {
         btn.onclick = async () => { 
-            const name = nameInput.value; 
+            const name = (nameInput.value || '').trim(); 
             if(name) { 
-                if(type === 'unidad') appData.unidades.push({id: crypto.randomUUID(), name: name}); 
+                if(type === 'unidad') {
+                    const existing = appData.unidades.find(u => u.name.trim().toUpperCase() === name.toUpperCase());
+                    if(existing) {
+                        return alert("Ya existe una unidad con este nombre.");
+                    }
+                    appData.unidades.push({id: crypto.randomUUID(), name: name}); 
+                }
                 if(type === 'area') appData.areas.push({id: crypto.randomUUID(), unitId: parentId, name: name}); 
                 if(type === 'depto') appData.departamentos.push({id: crypto.randomUUID(), areaId: parentId, name: name}); 
                 
@@ -1538,7 +1646,7 @@ function renderCatalogo(categoryFilter = null) {
     if (categoryFilter) {
         if (categoryFilter === 'Tecnico') {
             // Caso especial para temas técnicos (todo lo que no sea de las categorías principales)
-            filtered = appData.catalogo.filter(c => !['Procedimiento', 'Normas', 'Seguridad', 'Salud'].includes(c.categoria));
+            filtered = appData.catalogo.filter(c => c.categoria === 'Tecnico' || (!['Procedimiento', 'Normas', 'Seguridad', 'Salud', 'Medio Ambiente', 'SSMARCC'].includes(c.categoria)));
         } else {
             filtered = appData.catalogo.filter(c => c.categoria === categoryFilter);
         }
@@ -1782,34 +1890,39 @@ function savePersonalIndividual() {
 }
 
 window.saveCatalogoItem = () => {
-    const code = document.getElementById('cat-code').value;
-    const areaSelect = document.getElementById('cat-area').value;
-    const newArea = document.getElementById('cat-new-area').value;
+    const code = (document.getElementById('cat-code')?.value || '').trim().toUpperCase();
+    const areaSelect = document.getElementById('cat-area')?.value || 'GENERAL';
+    const newArea = (document.getElementById('cat-new-area')?.value || '').trim().toUpperCase();
     const fileInput = document.getElementById('cat-file-upload');
+    const nombre = (document.getElementById('cat-name')?.value || '').trim();
     
+    if(!nombre || !code) return alert("Código y Nombre son obligatorios");
+    if(areaSelect === 'NUEVA AREA' && !newArea) return alert("Especifique el nombre de la nueva área");
+
     const item = {
         codigo: code,
-        categoria: document.getElementById('cat-category').value,
+        categoria: document.getElementById('cat-category')?.value || 'Procedimiento',
         areaAplica: areaSelect === 'NUEVA AREA' ? newArea : areaSelect,
-        nombre: document.getElementById('cat-name').value,
-        descripcion: document.getElementById('cat-desc').value,
-        instructor: document.getElementById('cat-instructor').value,
+        nombre: nombre,
+        descripcion: (document.getElementById('cat-desc')?.value || '').trim(),
+        instructor: (document.getElementById('cat-instructor')?.value || '').trim(),
         archivo: 'PDF',
-        fileName: fileInput.files[0] ? fileInput.files[0].name : (currentEditCatIdx !== null ? appData.catalogo[currentEditCatIdx].fileName : ''),
-        fileData: currentEditFileData || (currentEditCatIdx !== null ? appData.catalogo[currentEditCatIdx].fileData : null)
+        fileName: fileInput?.files?.[0] ? fileInput.files[0].name : (currentEditCatIdx !== null && appData.catalogo[currentEditCatIdx] ? appData.catalogo[currentEditCatIdx].fileName : ''),
+        fileData: currentEditFileData || (currentEditCatIdx !== null && appData.catalogo[currentEditCatIdx] ? appData.catalogo[currentEditCatIdx].fileData : null)
     };
     
-    if(!item.nombre || !item.codigo) return alert("Código y Nombre son obligatorios");
-    if(areaSelect === 'NUEVA AREA' && !newArea) return alert("Especifique el nombre de la nueva área");
-    
-    if(currentEditCatIdx !== null) {
-        // Mantener el ID si ya existe
-        item.id = appData.catalogo[currentEditCatIdx].id;
+    if(currentEditCatIdx !== null && appData.catalogo[currentEditCatIdx]) {
+        item.id = appData.catalogo[currentEditCatIdx].id || crypto.randomUUID();
         appData.catalogo[currentEditCatIdx] = item;
     } else {
-        // Generar un ID único real para Supabase
-        item.id = crypto.randomUUID();
-        appData.catalogo.push(item);
+        const existingIdx = appData.catalogo.findIndex(c => (c.codigo || '').trim().toUpperCase() === code);
+        if(existingIdx !== -1) {
+            item.id = appData.catalogo[existingIdx].id || crypto.randomUUID();
+            appData.catalogo[existingIdx] = item;
+        } else {
+            item.id = crypto.randomUUID();
+            appData.catalogo.push(item);
+        }
     }
     
     save();
@@ -1984,21 +2097,24 @@ function deleteCatalogoItem(idx) {
 
     function closeMatrizModal() { document.getElementById('matriz-modal').classList.add('hidden'); }
 
-    function saveMatriz() {
+    window.saveMatriz = function saveMatriz() {
+        const name = (document.getElementById('matriz-name')?.value || '').trim();
+        if(!name) return alert("El nombre de la matriz es obligatorio");
+
         const matriz = {
             id: crypto.randomUUID(),
-            depto: document.getElementById('matriz-depto').value,
-            name: document.getElementById('matriz-name').value,
-            start: document.getElementById('matriz-start').value,
-            end: document.getElementById('matriz-end').value,
-            category: document.getElementById('matriz-category').value,
-            items: []
+            depto: document.getElementById('matriz-depto')?.value || '',
+            name: name,
+            start: document.getElementById('matriz-start')?.value || '',
+            end: document.getElementById('matriz-end')?.value || '',
+            category: document.getElementById('matriz-category')?.value || 'Procedimiento',
+            topics: [],
+            attendance: {}
         };
-        if(!matriz.name) return alert("El nombre de la matriz es obligatorio");
         appData.matrices.push(matriz);
         save();
         closeMatrizModal();
-    }
+    };
 
     function deleteMatriz(id) {
         if(confirm('¿Eliminar esta matriz de capacitación?')) {
@@ -3259,24 +3375,30 @@ window.closeLearningMap = () => document.getElementById('learning-map-modal').cl
     };
 
     window.saveUser = () => {
-        const nombre = document.getElementById('u-nombre').value;
-        const user = document.getElementById('u-user').value;
-        const pass = document.getElementById('u-pass').value;
-        const role = document.getElementById('u-role').value;
-        const unidad = document.getElementById('u-unidad').value;
-        const area = document.getElementById('u-area').value;
-        const depto = document.getElementById('u-depto').value;
+        const nombre = (document.getElementById('u-nombre')?.value || '').trim();
+        const user = (document.getElementById('u-user')?.value || '').trim();
+        const pass = (document.getElementById('u-pass')?.value || '').trim();
+        const role = document.getElementById('u-role')?.value || 'USER';
+        const unidad = document.getElementById('u-unidad')?.value || 'ALL';
+        const area = document.getElementById('u-area')?.value || 'ALL';
+        const depto = document.getElementById('u-depto')?.value || 'ALL';
 
         if(!nombre || !user || !pass) return alert("Todos los campos son obligatorios");
 
+        const existingIdx = appData.users.findIndex(usr => usr.user.toLowerCase() === user.toLowerCase());
+        const existingId = (existingIdx !== -1 && isValidUUID(appData.users[existingIdx].id)) ? appData.users[existingIdx].id : null;
+
         const userData = {
-            id: window.editingUserId || Date.now().toString(),
+            id: window.editingUserId || existingId || crypto.randomUUID(),
             nombre, user, pass, role, unidad, area, depto
         };
 
         if(window.editingUserId) {
             const idx = appData.users.findIndex(usr => usr.id === window.editingUserId);
-            appData.users[idx] = userData;
+            if(idx !== -1) appData.users[idx] = userData;
+            else appData.users.push(userData);
+        } else if(existingIdx !== -1) {
+            appData.users[existingIdx] = userData;
         } else {
             appData.users.push(userData);
         }
